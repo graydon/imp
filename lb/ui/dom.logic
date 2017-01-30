@@ -1,64 +1,90 @@
 block(`dom) {
- export(`{ 
-   node(node) -> 
-     string(node).
-   
-   node_by_id[id] = node ->
-     string(id), string(node), node(node).
- 
-   parent[node] = parent ->
-     string(node), string(parent), node(node), node(parent).
+  export(`{ 
+    node(node), node_id(node:id) -> int(id).
+       
+    root[] = root ->
+      node(root).
       
-   position[node] = position -> 
-     string(node), node(node), int(position). 
+    parent[child] = parent ->
+      node(child), node(parent).
+      
+    position[child] = ix ->
+      node(child), int(ix).
+       
+    fixed_child[parent, position] = child ->
+      node(parent), int(position), node(child).
+      
+    int_keyed_child[parent, key] = child ->
+      node(parent), int(key), node(child).
+      
+    named_node[name] = node ->
+      node(node), string(name).
      
-   tag[node] = tag -> // defaults to "div"
-     string(node), node(node), string(tag).
+    tag[node] = tag -> // defaults to "div"
+      node(node), string(tag).
      
-   attribute[node, key] = val ->
-     string(node), node(node), string(key), string(val).
+    attribute[node, key] = val ->
+      node(node), string(key), string(val).
  
-   style[node, key] = val ->
-     string(node), node(node), string(key), string(val).
+    style[node, key] = val ->
+      node(node), string(key), string(val).
  
-   text[node] = text ->
-     string(node), node(node), string(text).
+    text[node] = text ->
+      node(node), string(text).
      
-   event(event) -> 
-     string(event).
-   
-   event_by_name[name] = event ->
-     string(name), string(event), event(event).
+    event(event) -> 
+      string(event).
  
-   listen_to(node, event) ->
-     string(node), string(event), node(node), event(event).
+    listen_to(node, event) ->
+      string(event), node(node), event(event).
      
-   clear(node) ->
-     string(node), node(node).
+    clear(node) ->
+      node(node).
      
-   focus[] = node ->
-     string(node), node(node).
-     
-   // events only constrain string(node) and not node(node) because node might already be deleted
+    focus[] = node ->
+      node(node).
  
-   click(node) ->
-     string(node). 
+    click(node) ->
+      node(node). 
  
-   key_down[node] = key ->
-     string(node), int(key).
+    key_down[node] = key ->
+      node(node), int(key).
      
-   change[node] = text ->
-     string(node), string(text).
+    change[node] = text ->
+      node(node), string(text).
      
     double_click(node) ->
-      string(node).
+      node(node).
       
     blur(node) ->
-      string(node).
+      node(node).
       
     frame() ->. // dummy event for animations, physics etc
   }),
   clauses(`{
+    lang:autoNumbered(`node_id).
+    lang:constructor(`root).
+    lang:constructor(`fixed_child).
+    lang:constructor(`int_keyed_child).
+    lang:constructor(`named_node).
+  
+    root[] = _ <-.
+    
+    parent[child] = parent <-
+      fixed_child[parent, _] = child.
+      
+    position[child] = position <-
+      fixed_child[_, position] = child.
+      
+    parent[child] = parent <-
+      int_keyed_child[parent, _] = child.
+          
+    position[child] = position <-
+      seq<<position = (parent, key)>>
+      int_keyed_child[parent, key] = child.
+    
+    lang:defaultValue[`tag] = "div".
+    
     lang:pulse(`clear).
   
     lang:pulse(`click).
@@ -68,8 +94,6 @@ block(`dom) {
     lang:pulse(`blur).
     lang:pulse(`frame).
     
-    node("root").
-    
     event("click").
     event("key_down").
     event("change").
@@ -78,20 +102,19 @@ block(`dom) {
     
     // every node except the root must have a parent
     node(node) -> 
-      node = "root"; parent[node] = _.
+      node = root[]; parent[node] = _.
       
     // no two nodes at same position
     parent[child1] = parent[child2], child1 != child2 ->
       position[child1] != position[child2].
     
-    // TODO this doesn't compile
-    // no gaps in position
-    // position[child1] = p, p > 0 ->
-    //  parent[child2] = parent[child1],
-    //  position[child2] = p-1.
+    // no gaps in positions
+    // TODO does not compile
+    // parent[child1] = parent, position[child1] > 0, position2 = position[child1] - 1 ->
+    //  parent[child2] = parent, position[child2] = position2.
       
     // can EITHER set text OR have children (because setting node.textContent deletes any existing children)
     text[node] = _ ->
-      !parent[_] = node. 
+      !(parent[_] = node). 
   })
 } <-- .

@@ -120,14 +120,25 @@ block(`flappy) {
       
     // ui
     
-    dom:node(id),
-    dom:parent[id] = "root",
-    dom:position[id] = 0,
-    dom:tag[id] = "svg:svg",
-    dom:attribute[id, "width"] = "480",
-    dom:attribute[id, "viewBox"] = "10 0 80 100",
-    dom:listen_to(id, "click") <-
-      id = "viewport".
+    text[fixed_child[root[], 0]] = "<svg width='480' viewBow='10 0 80 100' onclick>"
+    
+    svg("viewport") {width[] = "480", viewBox[]="10 0 80 100", onclick(),
+      child[0] = node("sky") {
+        
+      }
+      child[1] = node("ground") {
+      }
+    }
+    
+    dom:named_node["viewport"] = viewport,
+    dom:node(viewport) {
+    dom:parent[] = dom:root[],
+    dom:position[] = 0,
+    dom:tag[] = "svg:svg",
+    dom:attribute["width"] = "480",
+    dom:attribute["viewBox"] = "10 0 80 100",
+    dom:listen_to("click")
+    }.
       
     dom:node(id),
     dom:parent[id] = "viewport",
@@ -293,10 +304,11 @@ block(`flappy) {
       id4 = "game-over-4",
       game_over().
       
-    dom:node(id),
-    dom:parent[id] = "viewport",
-    dom:position[id] = 5,
-    dom:tag[id] = "svg:image",
+    dom:node(id) {
+    dom:parent[] = "viewport",
+    dom:position[] = 5,
+    dom:tag[] = "svg:image"
+    },
     dom:attribute[id, "x"] = float:string:convert[player_fixed_x[]],
     dom:attribute[id, "y"] = float:string:convert[player_y[]],
     dom:attribute[id, "width"] = float:string:convert[player_width[]],
