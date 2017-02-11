@@ -13,12 +13,6 @@ block(`dom) {
        
     fixed_child[parent, position] = child ->
       node(parent), int(position), node(child).
-      
-    int_keyed_child[parent, key] = child ->
-      node(parent), int(key), node(child).
-      
-    named_node[name] = node ->
-      node(node), string(name).
      
     tag[node] = tag -> // defaults to "div"
       node(node), string(tag).
@@ -65,8 +59,6 @@ block(`dom) {
     lang:autoNumbered(`node_id).
     lang:constructor(`root).
     lang:constructor(`fixed_child).
-    lang:constructor(`int_keyed_child).
-    lang:constructor(`named_node).
   
     root[] = _ <-.
     
@@ -75,13 +67,6 @@ block(`dom) {
       
     position[child] = position <-
       fixed_child[_, position] = child.
-      
-    parent[child] = parent <-
-      int_keyed_child[parent, _] = child.
-          
-    position[child] = position <-
-      seq<<position = (parent, key)>>
-      int_keyed_child[parent, key] = child.
     
     lang:defaultValue[`tag] = "div".
     
