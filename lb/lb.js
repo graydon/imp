@@ -72,7 +72,8 @@ function requestHandler() {
         data.stop_listening_to_node || [],
         data.stop_listening_to_event || [],
         data.clear_node || [],
-        data.focus_node
+        data.focus_node,
+        data.root
     );
     frame();
 }
@@ -113,7 +114,8 @@ function render(
     stop_listening_to_node,
     stop_listening_to_event,
     clear_node,
-    focus_node
+    focus_node,
+    root
 ) {
     for (var i = 0; i < delete_node_node.length; i++) {
         document.getElementById(delete_node_node[i]).remove();
@@ -162,7 +164,11 @@ function render(
     
     for (var i = 0; i < move_node_parent.length; i++) {
         child = document.getElementById(move_node_child[i]);
-        parent = document.getElementById(move_node_parent[i]);
+        parent_id = move_node_parent[i];
+        if (parent_id == root) {
+            parent_id = "root";
+        }
+        parent = document.getElementById(parent_id);
         parent.insertBefore(child, parent.children[move_node_position[i]]);
     }
     

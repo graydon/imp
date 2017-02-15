@@ -120,19 +120,201 @@ block(`flappy) {
       
     // ui
     
-    viewport[] = node ->
-      dom:node(node).
-    lang:constructor(`viewport).
+    text[fixed_child[root[], 0]] = "<svg width='480' viewBow='10 0 80 100' onclick>"
     
-    viewport[] = viewport {
-      dom:parent[] = dom:root[],
-      dom:position[] = 0,
-      dom:tag[] = "svg:svg",
-      dom:attribute["width"] = "480",
-      dom:attribute["viewBox"] = "10 0 80 100",
-      dom:listen_to("click")
+    svg("viewport") {width[] = "480", viewBox[]="10 0 80 100", onclick(),
+      child[0] = node("sky") {
+        
+      }
+      child[1] = node("ground") {
+      }
+    }
+    
+    dom:named_node["viewport"] = viewport,
+    dom:node(viewport) {
+    dom:parent[] = dom:root[],
+    dom:position[] = 0,
+    dom:tag[] = "svg:svg",
+    dom:attribute["width"] = "480",
+    dom:attribute["viewBox"] = "10 0 80 100",
+    dom:listen_to("click")
     }.
       
+    dom:node(id),
+    dom:parent[id] = "viewport",
+    dom:position[id] = 0,
+    dom:tag[id] = "svg:rect",
+    dom:attribute[id, "x"] = "0",
+    dom:attribute[id, "y"] = "0",
+    dom:attribute[id, "width"] = "100",
+    dom:attribute[id, "height"] = "53",
+    dom:attribute[id, "fill"] = "rgb(112, 197, 206)" <-
+      id = "sky".
+      
+    dom:node(id),
+    dom:parent[id] = "viewport",
+    dom:position[id] = 1,
+    dom:tag[id] = "svg:image",
+    dom:attribute[id, "x"] = "0",
+    dom:attribute[id, "y"] = "52",
+    dom:attribute[id, "width"] = "100",
+    dom:attribute[id, "height"] = "43",
+    dom:attribute[id, "preserveAspectRatio"] = "xMinYMin slice",
+    dom:attribute[id, "xlink:href"] = "https://cdn.rawgit.com/bhauman/flappy-bird-demo/master/resources/public/imgs/background.png" <-
+      id = "background".
+      
+    dom:node(id),
+    dom:parent[id] = "viewport",
+    dom:position[id] = 2,
+    dom:tag[id] = "svg:rect",
+    dom:attribute[id, "x"] = "0",
+    dom:attribute[id, "y"] = "95",
+    dom:attribute[id, "width"] = "100",
+    dom:attribute[id, "height"] = "5" <- 
+      id = "ground".
+      
+    dom:attribute[id, "fill"] = "rgb(222, 216, 149)" <-
+      id = "ground",
+      !collision().
+      
+    dom:attribute[id, "fill"] = "rgb(255, 0, 0)" <-
+      id = "ground",
+      collision().
+      
+    dom:node(id),
+    dom:parent[id] = "viewport",
+    dom:position[id] = 3,
+    dom:tag[id] = "svg:svg",
+    dom:attribute[id, "x"] = "0",
+    dom:attribute[id, "y"] = "0",
+    dom:attribute[id, "width"] = "100",
+    dom:attribute[id, "height"] = "100" <-
+      id = "obstacles".
+      
+    dom:node(id_top_body),
+    dom:parent[id_top_body] = "obstacles",
+    dom:position[id_top_body] = (4*i) + 0, 
+    dom:tag[id_top_body] = "svg:image",
+    dom:attribute[id_top_body, "x"] = float:string:convert[x],
+    dom:attribute[id_top_body, "y"] = "0",
+    dom:attribute[id_top_body, "width"] = float:string:convert[obstacle_width[]],
+    dom:attribute[id_top_body, "height"] = float:string:convert[y],
+    dom:attribute[id_top_body, "preserveAspectRatio"] = "none",
+    dom:attribute[id_top_body, "xlink:href"] = "https://cdn.rawgit.com/bhauman/flappy-bird-demo/master/resources/public/imgs/pillar-bkg.png",
+    
+    dom:node(id_bottom_body),
+    dom:parent[id_bottom_body] = "obstacles",
+    dom:position[id_bottom_body] = (4*i) + 1, 
+    dom:tag[id_bottom_body] = "svg:image",
+    dom:attribute[id_bottom_body, "x"] = float:string:convert[x],
+    dom:attribute[id_bottom_body, "y"] = float:string:convert[y+gap_size[]],
+    dom:attribute[id_bottom_body, "width"] = float:string:convert[obstacle_width[]],
+    dom:attribute[id_bottom_body, "height"] = float:string:convert[floor_height[]-y-gap_size[]],
+    dom:attribute[id_bottom_body, "preserveAspectRatio"] = "none",
+    dom:attribute[id_bottom_body, "xlink:href"] = "https://cdn.rawgit.com/bhauman/flappy-bird-demo/master/resources/public/imgs/pillar-bkg.png",
+    
+    dom:node(id_top_head),
+    dom:parent[id_top_head] = "obstacles",
+    dom:position[id_top_head] = (4*i) + 2, 
+    dom:tag[id_top_head] = "svg:image",
+    dom:attribute[id_top_head, "x"] = float:string:convert[x-1f],
+    dom:attribute[id_top_head, "y"] = float:string:convert[y-5f],
+    dom:attribute[id_top_head, "width"] = float:string:convert[obstacle_width[]+2f],
+    dom:attribute[id_top_head, "height"] = "5",
+    dom:attribute[id_top_head, "xlink:href"] = "https://cdn.rawgit.com/bhauman/flappy-bird-demo/master/resources/public/imgs/lower-pillar-head.png",
+    
+    dom:node(id_bottom_head),
+    dom:parent[id_bottom_head] = "obstacles",
+    dom:position[id_bottom_head] = (4*i) + 3, 
+    dom:tag[id_bottom_head] = "svg:image",
+    dom:attribute[id_bottom_head, "x"] = float:string:convert[x-1f],
+    dom:attribute[id_bottom_head, "y"] = float:string:convert[y+gap_size[]],
+    dom:attribute[id_bottom_head, "width"] = float:string:convert[obstacle_width[]+2f],
+    dom:attribute[id_bottom_head, "height"] = "5",
+    dom:attribute[id_bottom_head, "xlink:href"] = "https://cdn.rawgit.com/bhauman/flappy-bird-demo/master/resources/public/imgs/lower-pillar-head.png" <-
+  
+      obstacle_x[i] = x,
+      obstacle_y[i] = y,
+      id_top_body = "obstacle-top-body-" + int:string:convert[i],
+      id_bottom_body = "obstacle-bottom-body-" + int:string:convert[i],
+      id_top_head = "obstacle-top-head-" + int:string:convert[i],
+      id_bottom_head = "obstacle-bottom-head-" + int:string:convert[i].
+      
+    dom:node(id),
+    dom:parent[id] = "viewport",
+    dom:position[id] = 4,
+    dom:tag[id] = "svg:text",
+    dom:attribute[id, "x"] = "50",
+    dom:attribute[id, "y"] = "45",
+    dom:attribute[id, "text-anchor"] = "middle",
+    dom:attribute[id, "font-size"] = "6",
+    dom:text[id] = "Click the screen to begin!" <-
+      id = "start",
+      game_not_started().
+      
+    dom:node(id),
+    dom:parent[id] = "viewport",
+    dom:position[id] = 4,
+    dom:tag[id] = "svg:svg",
+    
+    dom:node(id1),
+    dom:parent[id1] = id,
+    dom:position[id1] = 0,
+    dom:tag[id1] = "svg:text",
+    dom:attribute[id1, "x"] = "50",
+    dom:attribute[id1, "y"] = "30",
+    dom:attribute[id1, "text-anchor"] = "middle",
+    dom:attribute[id1, "font-size"] = "6",
+    dom:text[id1] = "Game Over :(",
+    
+    dom:node(id2),
+    dom:parent[id2] = id,
+    dom:position[id2] = 1,
+    dom:tag[id2] = "svg:text",
+    dom:attribute[id2, "x"] = "50",
+    dom:attribute[id2, "y"] = "55",
+    dom:attribute[id2, "text-anchor"] = "middle",
+    dom:attribute[id2, "font-size"] = "6",
+    dom:text[id2] = "Score " + int:string:convert[score[]],
+    
+    dom:node(id3),
+    dom:parent[id3] = id,
+    dom:position[id3] = 2,
+    dom:tag[id3] = "svg:text",
+    dom:attribute[id3, "x"] = "50",
+    dom:attribute[id3, "y"] = "65",
+    dom:attribute[id3, "text-anchor"] = "middle",
+    dom:attribute[id3, "font-size"] = "6",
+    dom:text[id3] = "Best " + int:string:convert[best_score[]],
+    
+    dom:node(id4),
+    dom:parent[id4] = id,
+    dom:position[id4] = 3,
+    dom:tag[id4] = "svg:text",
+    dom:attribute[id4, "x"] = "50",
+    dom:attribute[id4, "y"] = "85",
+    dom:attribute[id4, "text-anchor"] = "middle",
+    dom:attribute[id4, "font-size"] = "4",
+    dom:text[id4] = "Click to play again!" <-
+
+      id = "game-over",
+      id1 = "game-over-1",
+      id2 = "game-over-2",
+      id3 = "game-over-3",
+      id4 = "game-over-4",
+      game_over().
+      
+    dom:node(id) {
+    dom:parent[] = "viewport",
+    dom:position[] = 5,
+    dom:tag[] = "svg:image"
+    },
+    dom:attribute[id, "x"] = float:string:convert[player_fixed_x[]],
+    dom:attribute[id, "y"] = float:string:convert[player_y[]],
+    dom:attribute[id, "width"] = float:string:convert[player_width[]],
+    dom:attribute[id, "height"] = float:string:convert[player_height[]],
+    dom:attribute[id, "xlink:href"] = "https://cdn.rawgit.com/bhauman/flappy-bird-demo/master/resources/public/imgs/flappy-base.png" <-
+      id = "player".
       
   })    
 

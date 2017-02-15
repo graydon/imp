@@ -61,4 +61,5 @@ message Response
   repeated string stop_listening_to_event = 20;
   repeated int64 clear_node = 21;
   optional int64 focus_node = 22;
+  required int64 root = 23;
 }
