@@ -56,6 +56,8 @@ block(`dom) {
     frame() ->. // dummy event for animations, physics etc
   }),
   clauses(`{
+    lang:derivationType[`node]="DerivedAndStored".
+    
     lang:autoNumbered(`node_id).
     lang:constructor(`root).
     lang:constructor(`fixed_child).
