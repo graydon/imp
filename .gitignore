@@ -5,4 +5,3 @@ lb/proto-gen
 lb/LB_SUMMARY.lbp
 *.lbb
 *.log
-lb/demo/*.logic

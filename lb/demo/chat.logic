@@ -1,0 +1,274 @@
+block(`chat) {
+  alias(`ui:dom, `dom),
+  
+  clauses(`{
+    // state 
+    
+    text[message] = text ->
+      int(message), string(text).
+      
+    session[message] = session ->
+      int(message), string(session).
+      
+    time[message] = time ->
+      int(message), datetime(time).
+      
+    input_text[session] = text ->
+      string(session), string(text).
+      
+    user_name[session] = user_name ->
+      string(session), string(user_name).
+      
+    input_user_name[session] = user_name ->
+      string(session), string(user_name).
+      
+    // computed
+    
+    max_message[] = max_message <-
+      agg<<max_message = max(message)>>
+      text[message] = _.
+    
+    max_message[] = 0 <-
+      !text[_] = _.
+      
+    // event handlers
+    
+    ^input_user_name[session] = text <-
+      +dom:change[session, "user-name"] = text.
+      
+    +user_name[session] = input_user_name[session] <-
+      +dom:key_down[session, "user-name"] = 13, // ENTER
+      input_user_name[session] != "".
+    
+    ^input_text[session] = text <-
+      +dom:change[session, "new-message-entry"] = text.
+    
+    +text[message] = input_text[session],
+    +session[message] = session,
+    +time[message] = datetime:now[],
+    +dom:clear(session, "new-message-entry"),
+    +dom:scroll_into_view(session, "message-" + int:string:convert[message]) <-
+      +dom:key_down[session, "new-message-entry"] = 13, // ENTER
+      input_text[session] != "",
+      message = max_message@prev[] + 1.
+      
+    // ui
+    
+    login(session) <-
+      dom:url_fragment[session] = "#chat",
+      !user_name[session] = _.
+  
+    chat(session) <-
+      dom:url_fragment[session] = "#chat".
+      // user_name[session] = _.
+      
+    message(message, text[message], datetime:string:convert[time[message]]).
+    
+id_lb[session] = id -> string(session), string(id).
+
+id_lb[session] = "root" <- dom:session(session).
+
+id_lb_0[session] = id ->
+    string(session), string(id).
+
+id_lb_0[session] = "lb_0/" + int:string:convert[string:hash[session]] <-
+     id_lb[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0[session] = child, id_lb[session] = parent.
+
+dom:position[session, id] = -1 <-
+    id_lb_0[session] = id.
+
+dom:node(session, id),
+dom:tag[session, id] = "div" <-
+    id_lb_0[session] = id.
+
+id_lb_0_1[session] = id ->
+    string(session), string(id).
+
+id_lb_0_1[session] = "lb_0_1/" + int:string:convert[string:hash[session]] <-
+     id_lb_0[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_1[session] = child, id_lb_0[session] = parent.
+
+dom:position[session, id] = 0 <-
+    id_lb_0_1[session] = id.
+
+dom:node(session, id),
+dom:tag[session, id] = "div" <-
+    id_lb_0_1[session] = id.
+
+id_lb_0_1_1[session] = id ->
+    string(session), string(id).
+
+id_lb_0_1_1[session] = "lb_0_1_1/" + int:string:convert[string:hash[session]] <-
+    login(session), id_lb_0_1[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_1_1[session] = child, id_lb_0_1[session] = parent.
+
+position_lb_0_1_1(session,pos,id) ->
+    string(session), int(pos), string(id).
+
+position_lb_0_1_1(session,pos,id) <-
+    seq<<>> id_lb_0_1_1[session] = id.
+
+dom:position[session, id] = pos <-
+    position_lb_0_1_1(session,pos,id).
+
+dom:node(session, id),
+dom:tag[session, id] = "input",
+dom:attribute[session, id, "type"] = "text",
+dom:attribute[session, id, "placeholder"] = "What should we call you?" <-
+    id_lb_0_1_1[session] = id.
+
+id_lb_0_2[session] = id ->
+    string(session), string(id).
+
+id_lb_0_2[session] = "lb_0_2/" + int:string:convert[string:hash[session]] <-
+     id_lb_0[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_2[session] = child, id_lb_0[session] = parent.
+
+dom:position[session, id] = 1 <-
+    id_lb_0_2[session] = id.
+
+dom:node(session, id),
+dom:tag[session, id] = "div" <-
+    id_lb_0_2[session] = id.
+
+id_lb_0_2_1[session] = id ->
+    string(session), string(id).
+
+id_lb_0_2_1[session] = "lb_0_2_1/" + int:string:convert[string:hash[session]] <-
+    chat(session), id_lb_0_2[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_2_1[session] = child, id_lb_0_2[session] = parent.
+
+position_lb_0_2_1(session,pos,id) ->
+    string(session), int(pos), string(id).
+
+position_lb_0_2_1(session,pos,id) <-
+    seq<<>> id_lb_0_2_1[session] = id.
+
+dom:position[session, id] = pos <-
+    position_lb_0_2_1(session,pos,id).
+
+dom:node(session, id),
+dom:tag[session, id] = "div" <-
+    id_lb_0_2_1[session] = id.
+
+id_lb_0_2_1_1[session] = id ->
+    string(session), string(id).
+
+id_lb_0_2_1_1[session] = "lb_0_2_1_1/" + int:string:convert[string:hash[session]] <-
+     id_lb_0_2_1[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_2_1_1[session] = child, id_lb_0_2_1[session] = parent.
+
+dom:position[session, id] = 0 <-
+    id_lb_0_2_1_1[session] = id.
+
+dom:node(session, id),
+dom:tag[session, id] = "div" <-
+    id_lb_0_2_1_1[session] = id.
+
+id_lb_0_2_1_1_1[session,message,text,time] = id ->
+    string(session),int(message),string(text),string(time), string(id).
+
+id_lb_0_2_1_1_1[session,message,text,time] = "lb_0_2_1_1_1/" + int:string:convert[string:hash[session]] + "/" + int:string:convert[message] + "/" + int:string:convert[string:hash[text]] + "/" + int:string:convert[string:hash[time]] <-
+    message(message,text,time), id_lb_0_2_1_1[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_2_1_1_1[session,message,text,time] = child, id_lb_0_2_1_1[session] = parent.
+
+position_lb_0_2_1_1_1(session,pos,message,text,time,id) ->
+    string(session),int(message),string(text),string(time), int(pos), string(id).
+
+position_lb_0_2_1_1_1(session,pos,message,text,time,id) <-
+    seq<<>> id_lb_0_2_1_1_1[session,message,text,time] = id.
+
+dom:position[session, id] = pos <-
+    position_lb_0_2_1_1_1(session,pos,message,text,time,id).
+
+dom:node(session, id),
+dom:tag[session, id] = "div" <-
+    id_lb_0_2_1_1_1[session,message,text,time] = id.
+
+id_lb_0_2_1_1_1_1[session,message,text,time] = id ->
+    string(session),int(message),string(text),string(time), string(id).
+
+id_lb_0_2_1_1_1_1[session,message,text,time] = "lb_0_2_1_1_1_1/" + int:string:convert[string:hash[session]] + "/" + int:string:convert[message] + "/" + int:string:convert[string:hash[text]] + "/" + int:string:convert[string:hash[time]] <-
+     id_lb_0_2_1_1_1[session,message,text,time] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_2_1_1_1_1[session,message,text,time] = child, id_lb_0_2_1_1_1[session,message,text,time] = parent.
+
+dom:position[session, id] = 0 <-
+    id_lb_0_2_1_1_1_1[session,message,text,time] = id.
+
+dom:node(session, id),
+dom:tag[session, id] = "span",
+dom:attribute[session, id, "class"] = "message-time",
+dom:text[session, id] = time <-
+    id_lb_0_2_1_1_1_1[session,message,text,time] = id.
+
+id_lb_0_2_1_1_1_2[session,message,text,time] = id ->
+    string(session),int(message),string(text),string(time), string(id).
+
+id_lb_0_2_1_1_1_2[session,message,text,time] = "lb_0_2_1_1_1_2/" + int:string:convert[string:hash[session]] + "/" + int:string:convert[message] + "/" + int:string:convert[string:hash[text]] + "/" + int:string:convert[string:hash[time]] <-
+     id_lb_0_2_1_1_1[session,message,text,time] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_2_1_1_1_2[session,message,text,time] = child, id_lb_0_2_1_1_1[session,message,text,time] = parent.
+
+dom:position[session, id] = 1 <-
+    id_lb_0_2_1_1_1_2[session,message,text,time] = id.
+
+dom:node(session, id),
+dom:tag[session, id] = "span",
+dom:attribute[session, id, "class"] = "message-text",
+dom:text[session, id] = text <-
+    id_lb_0_2_1_1_1_2[session,message,text,time] = id.
+
+id_lb_0_2_1_2[session] = id ->
+    string(session), string(id).
+
+id_lb_0_2_1_2[session] = "lb_0_2_1_2/" + int:string:convert[string:hash[session]] <-
+     id_lb_0_2_1[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_2_1_2[session] = child, id_lb_0_2_1[session] = parent.
+
+dom:position[session, id] = 1 <-
+    id_lb_0_2_1_2[session] = id.
+
+dom:node(session, id),
+dom:tag[session, id] = "div" <-
+    id_lb_0_2_1_2[session] = id.
+
+id_lb_0_2_1_2_1[session] = id ->
+    string(session), string(id).
+
+id_lb_0_2_1_2_1[session] = "lb_0_2_1_2_1/" + int:string:convert[string:hash[session]] <-
+     id_lb_0_2_1_2[session] = _.
+
+dom:parent[session, child] = parent <-
+    id_lb_0_2_1_2_1[session] = child, id_lb_0_2_1_2[session] = parent.
+
+dom:position[session, id] = 0 <-
+    id_lb_0_2_1_2_1[session] = id.
+
+dom:node(session, id),
+dom:tag[session, id] = "input",
+dom:attribute[session, id, "type"] = "text",
+dom:attribute[session, id, "placeholder"] = "What do you want to say?" <-
+    id_lb_0_2_1_2_1[session] = id.
+    
+  })
+} <-- .
