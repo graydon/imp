@@ -138,7 +138,7 @@ fn constrain<'a>(
     variables: &mut [Value<'a>],
     result_vars: &[(String, usize)],
     results: &mut Vec<Value>,
-) -> Result<(), String> {
+) {
     if constraints.len() > 0 {
         let (buffer, other_buffers) = buffers.split_first_mut().unwrap();
         let (local, other_locals) = locals.split_first_mut().unwrap();
@@ -178,7 +178,7 @@ fn constrain<'a>(
                             variables,
                             result_vars,
                             results,
-                        )?;
+                        );
                     }
                 } else {
                     // copy previous state
@@ -236,7 +236,7 @@ fn constrain<'a>(
                                     variables,
                                     result_vars,
                                     results,
-                                )?;
+                                );
                             }
                         }
                         lo = hi;
@@ -248,7 +248,7 @@ fn constrain<'a>(
                 }
             }
             &Constraint::Apply(result_ix, result_already_fixed, ref function) => {
-                let result = function.apply(variables)?;
+                let result = function.apply(variables);
                 if result_already_fixed {
                     if variables[result_ix] == result {
                         constrain(
@@ -260,7 +260,7 @@ fn constrain<'a>(
                             variables,
                             result_vars,
                             results,
-                        )?;
+                        );
                     } else {
                         // failed, backtrack
                     }
@@ -275,7 +275,7 @@ fn constrain<'a>(
                         variables,
                         result_vars,
                         results,
-                    )?;
+                    );
                 }
             }
         }
@@ -284,7 +284,6 @@ fn constrain<'a>(
             results.push(variables[var_ix].really_to_owned());
         }
     }
-    Ok(())
 }
 
 pub struct Prepared {
@@ -321,7 +320,7 @@ pub fn prepare_block(block: &Block, db: &DB) -> Result<Prepared, String> {
     })
 }
 
-pub fn run_block(block: &Block, prepared: &mut Prepared) -> Result<Vec<Value<'static>>, String> {
+pub fn run_block(block: &Block, prepared: &mut Prepared) -> Vec<Value<'static>> {
     let &mut Prepared {
         ref indexes,
         ref mut ranges,
@@ -342,9 +341,9 @@ pub fn run_block(block: &Block, prepared: &mut Prepared) -> Result<Vec<Value<'st
             &mut block.variables.clone(),
             &*block.result_vars,
             &mut results,
-        )?
+        )
     );
-    Ok(results)
+    results
 }
 
 pub fn run_code(db: &DB, code: &str, cursor: i64) {
@@ -368,8 +367,7 @@ pub fn run_code(db: &DB, code: &str, cursor: i64) {
                             Err(error) => status.push(Err(format!("Prepare error: {}", error))),
                             Ok(mut prepared) => {
                                 match run_block(&block, &mut prepared) {
-                                    Err(error) => status.push(Err(format!("Run error: {}", error))),
-                                    Ok(results) => {
+                                    results => {
                                         status.push(Ok((block, results)));
                                     }
                                 }

@@ -129,13 +129,13 @@ mod bench {
         let block = plan(&block_ast(compiled::POLYNOMIAL).unwrap()).unwrap();
         let mut prepared = time!("prepare", prepare_block(&block, &db).unwrap());
         bench(format!("baseline\tpolynomial"), || {
-            compiled::polynomial_baseline(&prepared);
+            compiled::polynomial_baseline(&prepared)
         });
         bench(format!("compiled\tpolynomial"), || {
-            compiled::polynomial(&prepared);
+            compiled::polynomial(&prepared)
         });
         bench(format!("interpreted\tpolynomial"), || {
-            run_block(&block, &mut prepared).unwrap();
+            run_block(&block, &mut prepared)
         });
     }
 

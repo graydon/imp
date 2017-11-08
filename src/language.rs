@@ -217,82 +217,82 @@ pub enum Function {
 }
 
 impl Function {
-    pub fn apply<'a>(&self, variables: &[Value<'a>]) -> Result<Value<'static>, String> {
+    pub fn apply<'a>(&self, variables: &[Value<'a>]) -> Value<'static> {
         match self {
             &Function::Add(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Integer(a), &Value::Integer(b)) => Ok(Value::Integer(a + b)),
-                    (a, b) => Err(format!("Type error: {} + {}", a, b)),
+                    (&Value::Integer(a), &Value::Integer(b)) => Value::Integer(a + b),
+                    (a, b) => panic!("Type error: {} + {}", a, b),
                 }
             }
             &Function::Mul(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Integer(a), &Value::Integer(b)) => Ok(Value::Integer(a * b)),
-                    (a, b) => Err(format!("Type error: {} + {}", a, b)),
+                    (&Value::Integer(a), &Value::Integer(b)) => Value::Integer(a * b),
+                    (a, b) => panic!("Type error: {} + {}", a, b),
                 }
             }
             &Function::Contains(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::String(ref a), &Value::String(ref b)) => Ok(Value::Boolean(a.contains(b.as_ref()))),
-                    (a, b) => Err(format!("Type error: contains({}, {})", a, b)),
+                    (&Value::String(ref a), &Value::String(ref b)) => Value::Boolean(a.contains(b.as_ref())),
+                    (a, b) => panic!("Type error: contains({}, {})", a, b),
                 }
             }
             &Function::And(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Boolean(a), &Value::Boolean(b)) => Ok(Value::Boolean(a && b)),
-                    (a, b) => Err(format!("Type error: {} && {}", a, b)),
+                    (&Value::Boolean(a), &Value::Boolean(b)) => Value::Boolean(a && b),
+                    (a, b) => panic!("Type error: {} && {}", a, b),
                 }
             }
             &Function::Or(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Boolean(a), &Value::Boolean(b)) => Ok(Value::Boolean(a || b)),
-                    (a, b) => Err(format!("Type error: {} || {}", a, b)),
+                    (&Value::Boolean(a), &Value::Boolean(b)) => Value::Boolean(a || b),
+                    (a, b) => panic!("Type error: {} || {}", a, b),
                 }
             }
             &Function::Not(a) => {
                 match &variables[a] {
-                    &Value::Boolean(a) => Ok(Value::Boolean(!a)),
-                    a => Err(format!("Type error: !{}", a)),
+                    &Value::Boolean(a) => Value::Boolean(!a),
+                    a => panic!("Type error: !{}", a),
                 }
             }
             &Function::Leq(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Boolean(a), &Value::Boolean(b)) => Ok(Value::Boolean(a <= b)),
-                    (&Value::Integer(a), &Value::Integer(b)) => Ok(Value::Boolean(a <= b)),
-                    (&Value::String(ref a), &Value::String(ref b)) => Ok(Value::Boolean(a <= b)),
-                    (a, b) => Err(format!("Type error: {} <= {}", a, b)),
+                    (&Value::Boolean(a), &Value::Boolean(b)) => Value::Boolean(a <= b),
+                    (&Value::Integer(a), &Value::Integer(b)) => Value::Boolean(a <= b),
+                    (&Value::String(ref a), &Value::String(ref b)) => Value::Boolean(a <= b),
+                    (a, b) => panic!("Type error: {} <= {}", a, b),
                 }
             }
             &Function::Le(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Boolean(a), &Value::Boolean(b)) => Ok(Value::Boolean(a < b)),
-                    (&Value::Integer(a), &Value::Integer(b)) => Ok(Value::Boolean(a < b)),
-                    (&Value::String(ref a), &Value::String(ref b)) => Ok(Value::Boolean(a < b)),
-                    (a, b) => Err(format!("Type error: {} < {}", a, b)),
+                    (&Value::Boolean(a), &Value::Boolean(b)) => Value::Boolean(a < b),
+                    (&Value::Integer(a), &Value::Integer(b)) => Value::Boolean(a < b),
+                    (&Value::String(ref a), &Value::String(ref b)) => Value::Boolean(a < b),
+                    (a, b) => panic!("Type error: {} < {}", a, b),
                 }
             }
             &Function::Geq(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Boolean(a), &Value::Boolean(b)) => Ok(Value::Boolean(a >= b)),
-                    (&Value::Integer(a), &Value::Integer(b)) => Ok(Value::Boolean(a >= b)),
-                    (&Value::String(ref a), &Value::String(ref b)) => Ok(Value::Boolean(a >= b)),
-                    (a, b) => Err(format!("Type error: {} >= {}", a, b)),
+                    (&Value::Boolean(a), &Value::Boolean(b)) => Value::Boolean(a >= b),
+                    (&Value::Integer(a), &Value::Integer(b)) => Value::Boolean(a >= b),
+                    (&Value::String(ref a), &Value::String(ref b)) => Value::Boolean(a >= b),
+                    (a, b) => panic!("Type error: {} >= {}", a, b),
                 }
             }
             &Function::Ge(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Boolean(a), &Value::Boolean(b)) => Ok(Value::Boolean(a >= b)),
-                    (&Value::Integer(a), &Value::Integer(b)) => Ok(Value::Boolean(a >= b)),
-                    (&Value::String(ref a), &Value::String(ref b)) => Ok(Value::Boolean(a >= b)),
-                    (a, b) => Err(format!("Type error: {} >= {}", a, b)),
+                    (&Value::Boolean(a), &Value::Boolean(b)) => Value::Boolean(a >= b),
+                    (&Value::Integer(a), &Value::Integer(b)) => Value::Boolean(a >= b),
+                    (&Value::String(ref a), &Value::String(ref b)) => Value::Boolean(a >= b),
+                    (a, b) => panic!("Type error: {} >= {}", a, b),
                 }
             }
             &Function::Eq(a, b) => {
                 match (&variables[a], &variables[b]) {
-                    (&Value::Boolean(a), &Value::Boolean(b)) => Ok(Value::Boolean(a == b)),
-                    (&Value::Integer(a), &Value::Integer(b)) => Ok(Value::Boolean(a == b)),
-                    (&Value::String(ref a), &Value::String(ref b)) => Ok(Value::Boolean(a == b)),
-                    (a, b) => Err(format!("Type error: {} == {}", a, b)),
+                    (&Value::Boolean(a), &Value::Boolean(b)) => Value::Boolean(a == b),
+                    (&Value::Integer(a), &Value::Integer(b)) => Value::Boolean(a == b),
+                    (&Value::String(ref a), &Value::String(ref b)) => Value::Boolean(a == b),
+                    (a, b) => panic!("Type error: {} == {}", a, b),
                 }
             }
         }

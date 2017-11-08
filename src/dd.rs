@@ -135,12 +135,12 @@ pub fn serve_dataflow() {
                             let function = function.clone();
                             if result_already_fixed {
                                 variables = variables.filter(move |row| {
-                                    let result = function.apply(&*row).unwrap();
+                                    let result = function.apply(&*row);
                                     row[var] == result
                                 });
                             } else {
                                 variables = variables.map(move |mut row| {
-                                    let result = function.apply(&*row).unwrap();
+                                    let result = function.apply(&*row);
                                     row[var] = result;
                                     row
                                 });
