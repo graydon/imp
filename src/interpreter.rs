@@ -5,62 +5,25 @@ use websocket::OwnedMessage;
 use websocket::sync::Server;
 
 use std::iter::Iterator;
+use std::cell::{Cell, RefCell};
+use std::cmp::Ordering;
 
 use language::*;
 
-fn permuted<T: Clone>(values: &[T], ordering: &[usize]) -> Vec<T> {
-    ordering.iter().map(|&ix| values[ix].clone()).collect()
-}
-
-impl Values {
-    fn permuted(&self, ordering: &[usize]) -> Self {
-        match self {
-            &Values::Boolean(ref booleans) => Values::Boolean(permuted(booleans, ordering)),
-            &Values::Integer(ref integers) => Values::Integer(permuted(integers, ordering)),
-            &Values::String(ref strings) => Values::String(permuted(strings, ordering)),
-            &Values::Any(ref values) => Values::Any(permuted(values, ordering)),
-        }
-    }
-}
-
-impl Relation {
-    fn sorted(&self, ordering: &[usize]) -> Relation {
-        let len = if self.columns.len() > 0 {
-            self.columns[0].len()
-        } else {
-            0
-        };
-        let mut ixes = (0..len).collect::<Vec<_>>();
-        for &c in ordering.iter().rev() {
-            // stable sort
-            ixes.sort_by(|&r1, &r2| {
-                self.columns[c].get(r1).cmp(&self.columns[c].get(r2))
-            });
-        }
-        let sorted_columns = self.columns
-            .iter()
-            .map(|column| column.permuted(&*ixes))
-            .collect();
-        Relation { columns: sorted_columns }
-    }
-}
-
-pub fn gallop_le_inner<T1: ::std::borrow::Borrow<T2>, T2: Ord + ?Sized>(
-    values: &[T1],
-    mut lo: usize,
-    hi: usize,
-    value: &T2,
-) -> usize {
-    if lo < hi && values[lo].borrow() < value {
+pub fn gallop<T, F>(values: &[T], mut lo: usize, hi: usize, f: F) -> usize
+where
+    F: Fn(&T) -> bool,
+{
+    if lo < hi && f(&values[lo]) {
         let mut step = 1;
-        while lo + step < hi && values[lo + step].borrow() < value {
+        while lo + step < hi && f(&values[lo + step]) {
             lo = lo + step;
             step = step << 1;
         }
 
         step = step >> 1;
         while step > 0 {
-            if lo + step < hi && values[lo + step].borrow() < value {
+            if lo + step < hi && f(&values[lo + step]) {
                 lo = lo + step;
             }
             step = step >> 1;
@@ -70,45 +33,18 @@ pub fn gallop_le_inner<T1: ::std::borrow::Borrow<T2>, T2: Ord + ?Sized>(
     }
     lo
 }
-
-pub fn gallop_leq_inner<T1: ::std::borrow::Borrow<T2>, T2: Ord + ?Sized>(
-    values: &[T1],
-    mut lo: usize,
-    hi: usize,
-    value: &T2,
-) -> usize {
-    if lo < hi && values[lo].borrow() <= value {
-        let mut step = 1;
-        while lo + step < hi && values[lo + step].borrow() <= value {
-            lo = lo + step;
-            step = step << 1;
-        }
-
-        step = step >> 1;
-        while step > 0 {
-            if lo + step < hi && values[lo + step].borrow() <= value {
-                lo = lo + step;
-            }
-            step = step >> 1;
-        }
-
-        lo += 1
-    }
-    lo
-}
-
-
 
 fn gallop_le(values: &Values, lo: usize, hi: usize, value: &Value) -> usize {
     match (values, value) {
         (&Values::Boolean(ref bools), &Value::Boolean(ref bool)) => {
-            gallop_le_inner(bools, lo, hi, bool)
+            gallop(bools, lo, hi, |t| t < bool)
         }
         (&Values::Integer(ref integers), &Value::Integer(ref integer)) => {
-            gallop_le_inner(integers, lo, hi, integer)
+            gallop(integers, lo, hi, |t| t < integer)
         }
         (&Values::String(ref strings), &Value::String(ref string)) => {
-            gallop_le_inner(strings, lo, hi, string.as_ref())
+            let string = string.as_ref();
+            gallop(strings, lo, hi, |t| &**t < string)
         }
         _ => panic!("Type error: gallop {} in {:?}", value, values),
     }
@@ -117,166 +53,829 @@ fn gallop_le(values: &Values, lo: usize, hi: usize, value: &Value) -> usize {
 fn gallop_leq(values: &Values, lo: usize, hi: usize, value: &Value) -> usize {
     match (values, value) {
         (&Values::Boolean(ref bools), &Value::Boolean(ref bool)) => {
-            gallop_leq_inner(bools, lo, hi, bool)
+            gallop(bools, lo, hi, |t| t <= bool)
         }
         (&Values::Integer(ref integers), &Value::Integer(ref integer)) => {
-            gallop_leq_inner(integers, lo, hi, integer)
+            gallop(integers, lo, hi, |t| t <= integer)
         }
         (&Values::String(ref strings), &Value::String(ref string)) => {
-            gallop_leq_inner(strings, lo, hi, string.as_ref())
+            let string = string.as_ref();
+            gallop(strings, lo, hi, |t| &**t <= string)
         }
         _ => panic!("Type error: gallop {} in {:?}", value, values),
     }
 }
 
-struct Stack<'a> {
-    ranges: Vec<LoHi>,
-    variables: Vec<Value<'a>>,
-    result_vars: Vec<(String, usize)>,
-    results: Vec<Value<'static>>,
+fn smaller((a_lo, a_hi): (usize, usize), (b_lo, b_hi): (usize, usize)) -> bool {
+    (a_hi - a_lo) < (b_hi - b_lo)
 }
 
-fn stage<'a>(
-    constraints: &[Constraint],
+pub fn narrow<T, Cmp, F>(values: &[T], (lo, hi): (usize, usize), cmp: Cmp, mut f: F)
+where
+    Cmp: Fn(&T) -> Ordering,
+    F: FnMut((usize, usize)),
+{
+    let lo = gallop(values, lo, hi, |v| cmp(v) == Ordering::Less);
+    let hi = gallop(values, lo, hi, |v| cmp(v) != Ordering::Greater);
+    if lo < hi {
+        f((lo, hi))
+    }
+}
+
+pub fn join1<T, F>(a: &[T], (mut a_lo, a_hi): (usize, usize), mut f: F)
+where
+    T: Ord,
+    F: FnMut((usize, usize)),
+{
+    while a_lo < a_hi {
+        let value = &a[a_lo];
+        let a_next_lo = gallop(a, a_lo, a_hi, |v| v < value);
+        f((a_lo, a_next_lo));
+        a_lo = a_next_lo;
+    }
+}
+
+pub fn join_inner2<T, F>(
+    a: &[T],
+    b: &[T],
+    a_range: (usize, usize),
+    b_range: (usize, usize),
+    mut f: F,
+) where
+    T: Ord,
+    F: FnMut((usize, usize), (usize, usize)),
+{
+    let mut b_lo = b_range.0;
+    join1(a, a_range, |a_range| {
+        let value = &a[a_range.0];
+        narrow(b, (b_lo, b_range.1), |v| v.cmp(value), |b_range| {
+            f(a_range, b_range);
+            b_lo = b_range.0;
+        });
+    });
+}
+
+pub fn join_inner3<T, F>(
+    a: &[T],
+    b: &[T],
+    c: &[T],
+    a_range: (usize, usize),
+    b_range: (usize, usize),
+    c_range: (usize, usize),
+    mut f: F,
+) where
+    T: Ord,
+    F: FnMut((usize, usize), (usize, usize), (usize, usize)),
+{
+    let mut c_lo = c_range.0;
+    join_inner2(a, b, a_range, b_range, |a_range, b_range| {
+        let value = &a[a_range.0];
+        narrow(c, (c_lo, c_range.1), |v| v.cmp(value), |c_range| {
+            f(a_range, b_range, c_range);
+            c_lo = c_range.0;
+        });
+    });
+}
+
+pub fn join_inner4<T, F>(
+    a: &[T],
+    b: &[T],
+    c: &[T],
+    d: &[T],
+    a_range: (usize, usize),
+    b_range: (usize, usize),
+    c_range: (usize, usize),
+    d_range: (usize, usize),
+    mut f: F,
+) where
+    T: Ord,
+    F: FnMut((usize, usize),
+          (usize, usize),
+          (usize, usize),
+          (usize, usize)),
+{
+    let mut d_lo = d_range.0;
+    join_inner3(
+        a,
+        b,
+        c,
+        a_range,
+        b_range,
+        c_range,
+        |a_range, b_range, c_range| {
+            let value = &a[a_range.0];
+            narrow(d, (d_lo, d_range.1), |v| v.cmp(value), |d_range| {
+                f(a_range, b_range, c_range, d_range);
+                d_lo = d_range.0;
+            });
+        },
+    );
+}
+
+pub fn join2<T, F>(a: &[T], b: &[T], a_range: (usize, usize), b_range: (usize, usize), mut f: F)
+where
+    T: Ord,
+    F: FnMut((usize, usize), (usize, usize)),
+{
+    if smaller(a_range, b_range) {
+        join_inner2(
+            a,
+            b,
+            a_range,
+            b_range,
+            |a_range, b_range| { f(a_range, b_range); },
+        );
+    } else {
+        join_inner2(
+            b,
+            a,
+            b_range,
+            a_range,
+            |b_range, a_range| { f(a_range, b_range); },
+        );
+    }
+}
+
+pub fn join3<T, F>(
+    a: &[T],
+    b: &[T],
+    c: &[T],
+    a_range: (usize, usize),
+    b_range: (usize, usize),
+    c_range: (usize, usize),
+    mut f: F,
+) where
+    T: Ord,
+    F: FnMut((usize, usize), (usize, usize), (usize, usize)),
+{
+    if smaller(a_range, b_range) && smaller(a_range, c_range) {
+        join_inner3(
+            a,
+            b,
+            c,
+            a_range,
+            b_range,
+            c_range,
+            |a_range, b_range, c_range| { f(a_range, b_range, c_range); },
+        );
+    } else if smaller(b_range, a_range) && smaller(b_range, c_range) {
+        join_inner3(
+            b,
+            a,
+            c,
+            b_range,
+            a_range,
+            c_range,
+            |b_range, a_range, c_range| { f(a_range, b_range, c_range); },
+        );
+    } else {
+        join_inner3(
+            c,
+            b,
+            a,
+            c_range,
+            b_range,
+            a_range,
+            |c_range, b_range, a_range| { f(c_range, b_range, a_range); },
+        );
+    }
+}
+
+pub fn join4<T, F>(
+    a: &[T],
+    b: &[T],
+    c: &[T],
+    d: &[T],
+    a_range: (usize, usize),
+    b_range: (usize, usize),
+    c_range: (usize, usize),
+    d_range: (usize, usize),
+    mut f: F,
+) where
+    T: Ord,
+    F: FnMut((usize, usize),
+          (usize, usize),
+          (usize, usize),
+          (usize, usize)),
+{
+    if smaller(a_range, b_range) && smaller(a_range, c_range) && smaller(a_range, d_range) {
+        join_inner4(a, b, c, d, a_range, b_range, c_range, d_range, |a_range,
+         b_range,
+         c_range,
+         d_range| {
+            f(a_range, b_range, c_range, d_range);
+        });
+    } else if smaller(b_range, a_range) && smaller(b_range, c_range) && smaller(b_range, d_range) {
+        join_inner4(b, a, c, d, b_range, a_range, c_range, d_range, |b_range,
+         a_range,
+         c_range,
+         d_range| {
+            f(b_range, a_range, c_range, d_range);
+        });
+    } else if smaller(c_range, a_range) && smaller(c_range, b_range) && smaller(c_range, d_range) {
+        join_inner4(c, b, a, d, c_range, b_range, a_range, d_range, |c_range,
+         b_range,
+         a_range,
+         d_range| {
+            f(a_range, b_range, c_range, d_range);
+        });
+    } else {
+        join_inner4(d, b, c, a, d_range, b_range, c_range, a_range, |d_range,
+         b_range,
+         c_range,
+         a_range| {
+            f(a_range, b_range, c_range, d_range);
+        });
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Variable<'a> {
+    Boolean(Cell<bool>),
+    Integer(Cell<i64>),
+    String(Cell<&'a str>),
+}
+
+#[derive(Debug, Clone)]
+struct State<'a> {
     indexes: &'a [Relation],
-) -> Box<FnMut(&mut Stack<'a>) -> Result<(), String> + 'a> {
-    if constraints.len() > 0 {
-        let mut tail = stage(&constraints[1..], indexes);
-        let mut buffer = vec![(0, 0); indexes.len()];
-        let mut local = vec![(0, 0); indexes.len()];
-        match constraints[0].clone() {
+    ranges: Vec<Cell<LoHi>>,
+    variables: Vec<Variable<'a>>,
+}
+
+type Staged<'a> = Box<FnMut() -> () + 'a>;
+
+fn stage_narrow<'a, T, Cmp>(
+    values: &'a [T],
+    range: &'a Cell<LoHi>,
+    cmp: Cmp,
+    mut tail: Staged<'a>,
+) -> Staged<'a>
+where
+    Cmp: Fn(&T) -> Ordering + 'a,
+{
+    box move || {
+        let old_range = range.get();
+        narrow(values, old_range, cmp, |new_range| {
+            range.set(new_range);
+            tail();
+            range.set(old_range);
+        });
+    }
+}
+
+fn stage_join1<'a, T, SetVariable>(
+    c0: &'a [T],
+    range0: &'a Cell<LoHi>,
+    set_variable: SetVariable,
+    tail: Staged<'a>,
+) -> Staged<'a>
+where
+    T: Ord,
+    SetVariable: Fn(&T) + 'a,
+{
+    box move || {
+        let old_range0 = range0.get();
+        join1(c0, old_range0, |new_range0| {
+            range0.set(new_range0);
+            set_variable(&c0[new_range0.0]);
+            tail();
+            range0.set(old_range0);
+        });
+    }
+}
+
+fn stage_join2<'a, T, SetVariable>(
+    c0: &'a [T],
+    c1: &'a [T],
+    range0: &'a Cell<LoHi>,
+    range1: &'a Cell<LoHi>,
+    set_variable: SetVariable,
+    tail: Staged<'a>,
+) -> Staged<'a>
+where
+    T: Ord,
+    SetVariable: Fn(T) + 'a,
+{
+    box move || {
+        let old_range0 = range0.get();
+        let old_range1 = range1.get();
+        join2(c0, c1, old_range0, old_range1, |new_range0, new_range1| {
+            range0.set(new_range0);
+            range1.set(new_range1);
+            set_variable(c0[new_range0.0]);
+            tail();
+            range0.set(old_range0);
+            range1.set(old_range1);
+        });
+    }
+}
+
+fn stage_join3<'a, T, SetVariable>(
+    c0: &'a [T],
+    c1: &'a [T],
+    c2: &'a [T],
+    range0: &'a Cell<LoHi>,
+    range1: &'a Cell<LoHi>,
+    range2: &'a Cell<LoHi>,
+    set_variable: SetVariable,
+    tail: Staged<'a>,
+) -> Staged<'a>
+where
+    T: Ord,
+    SetVariable: Fn(T) + 'a,
+{
+    box move || {
+        let old_range0 = range0.get();
+        let old_range1 = range1.get();
+        let old_range2 = range2.get();
+        join3(c0, c1, c2, old_range0, old_range1, old_range2, |new_range0,
+         new_range1,
+         new_range2| {
+            range0.set(new_range0);
+            range1.set(new_range1);
+            range2.set(new_range2);
+            set_variable(c0[new_range0.0]);
+            tail();
+            range0.set(old_range0);
+            range1.set(old_range1);
+            range2.set(old_range2);
+        });
+    }
+}
+
+fn stage_join4<'a, T, SetVariable>(
+    c0: &'a [T],
+    c1: &'a [T],
+    c2: &'a [T],
+    c3: &'a [T],
+    range0: &'a Cell<LoHi>,
+    range1: &'a Cell<LoHi>,
+    range2: &'a Cell<LoHi>,
+    range3: &'a Cell<LoHi>,
+    set_variable: SetVariable,
+    tail: Staged<'a>,
+) -> Staged<'a>
+where
+    T: Ord,
+    SetVariable: Fn(T) + 'a,
+{
+    box move || {
+        let old_range0 = range0.get();
+        let old_range1 = range1.get();
+        let old_range2 = range2.get();
+        let old_range3 = range3.get();
+        join4(
+            c0,
+            c1,
+            c2,
+            c3,
+            old_range0,
+            old_range1,
+            old_range2,
+            old_range3,
+            |new_range0, new_range1, new_range2, new_range3| {
+                range0.set(new_range0);
+                range1.set(new_range1);
+                range2.set(new_range2);
+                range3.set(new_range3);
+                set_variable(c0[new_range0.0]);
+                tail();
+                range0.set(old_range0);
+                range1.set(old_range1);
+                range2.set(old_range2);
+                range3.set(old_range3);
+            },
+        );
+    }
+}
+
+impl Function {
+    pub fn stage<'a>(&self, inputs: &'a [Variable<'a>], output: &'a Variable<'a>) -> Staged<'a> {
+        match self {
+            &Function::Add(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Integer(ref a),
+                     &Variable::Integer(ref b),
+                     &Variable::Integer(ref output)) => box move || output.set(a.get() + b.get()),
+                    (a, b, _) => panic!("Type error: {:?} + {:?}", a, b),
+                }
+            }
+            &Function::Mul(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Integer(ref a),
+                     &Variable::Integer(ref b),
+                     &Variable::Integer(ref output)) => box move || output.set(a.get() * b.get()),
+                    (a, b, _) => panic!("Type error: {:?} * {:?}", a, b),
+                }
+            }
+            &Function::Magic(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Integer(ref a),
+                     &Variable::Integer(ref b),
+                     &Variable::Integer(ref output)) => {
+                        box move || {
+                            output.set(
+                                (a.get() * a.get()) + (b.get() * b.get()) +
+                                    (3 * a.get() * b.get()),
+                            )
+                        }
+                    }
+                    (a, b, _) => panic!("Type error: magic({:?},{:?})", a, b),
+                }
+            }
+            &Function::Contains(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::String(ref a),
+                     &Variable::String(ref b),
+                     &Variable::Boolean(ref output)) => {
+                        box move || output.set(a.get().contains(b.get()))
+                    }
+                    (a, b, _) => panic!("Type error: contains({:?}, {:?})", a, b),
+                }
+            }
+            &Function::And(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Boolean(ref a),
+                     &Variable::Boolean(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() && b.get()),
+                    (a, b, _) => panic!("Type error: {:?} && {:?}", a, b),
+                }
+            }
+            &Function::Or(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Boolean(ref a),
+                     &Variable::Boolean(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() && b.get()),
+                    (a, b, _) => panic!("Type error: {:?} || {:?}", a, b),
+                }
+            }
+            &Function::Not(a) => {
+                match (&inputs[a], output) {
+                    (&Variable::Boolean(ref a), &Variable::Boolean(ref output)) => {
+                        box move || output.set(!a.get())
+                    }
+                    (a, _) => panic!("Type error: !{:?}", a),
+                }
+            }
+            &Function::Leq(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Boolean(ref a),
+                     &Variable::Boolean(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() <= b.get()),
+                    (&Variable::Integer(ref a),
+                     &Variable::Integer(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() <= b.get()),
+                    (&Variable::String(ref a),
+                     &Variable::String(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() <= b.get()),
+                    (a, b, _) => panic!("Type error: {:?} <= {:?}", a, b),
+                }
+            }
+            &Function::Le(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Boolean(ref a),
+                     &Variable::Boolean(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() < b.get()),
+                    (&Variable::Integer(ref a),
+                     &Variable::Integer(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() < b.get()),
+                    (&Variable::String(ref a),
+                     &Variable::String(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() < b.get()),
+                    (a, b, _) => panic!("Type error: {:?} < {:?}", a, b),
+                }
+            }
+            &Function::Geq(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Boolean(ref a),
+                     &Variable::Boolean(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() >= b.get()),
+                    (&Variable::Integer(ref a),
+                     &Variable::Integer(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() >= b.get()),
+                    (&Variable::String(ref a),
+                     &Variable::String(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() >= b.get()),
+                    (a, b, _) => panic!("Type error: {:?} >= {:?}", a, b),
+                }
+            }
+            &Function::Ge(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Boolean(ref a),
+                     &Variable::Boolean(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() > b.get()),
+                    (&Variable::Integer(ref a),
+                     &Variable::Integer(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() > b.get()),
+                    (&Variable::String(ref a),
+                     &Variable::String(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() > b.get()),
+                    (a, b, _) => panic!("Type error: {:?} >= {:?}", a, b),
+                }
+            }
+            &Function::Eq(a, b) => {
+                match (&inputs[a], &inputs[b], output) {
+                    (&Variable::Boolean(ref a),
+                     &Variable::Boolean(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() == b.get()),
+                    (&Variable::Integer(ref a),
+                     &Variable::Integer(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() == b.get()),
+                    (&Variable::String(ref a),
+                     &Variable::String(ref b),
+                     &Variable::Boolean(ref output)) => box move || output.set(a.get() == b.get()),
+                    (a, b, _) => panic!("Type error: {:?} == {:?}", a, b),
+                }
+            }
+        }
+    }
+}
+
+fn stage_apply<'a, T>(
+    result_already_fixed: bool,
+    output: &'a Cell<T>,
+    variable: &'a Cell<T>,
+    staged_function: Staged<'a>,
+    tail: Staged<'a>,
+) -> Staged<'a>
+where
+    T: Copy + Eq,
+{
+    if result_already_fixed {
+        box || {
+            staged_function();
+            if output.get() == variable.get() {
+                tail();
+            }
+        }
+    } else {
+        box || {
+            staged_function();
+            variable.set(output.get());
+        }
+    }
+}
+
+impl Constraint {
+    fn stage<'a>(&self, state: &'a State<'a>, mut tail: Staged<'a>) -> Staged<'a> {
+        match self.clone() {
             Constraint::Join(var_ix, result_already_fixed, rowcols) => {
                 if result_already_fixed {
-                    box move |stack| {
-
-                        // copy previous state
-                        for (i, &(row_ix, _)) in rowcols.iter().enumerate() {
-                            buffer[i] = stack.ranges[row_ix];
-                        }
-
-                        // search in each of rowcols
-                        let mut i = 0;
-                        {
-                            let value = &stack.variables[var_ix];
-                            while i < rowcols.len() {
-                                let (row_ix, col_ix) = rowcols[i];
-                                let column = &indexes[row_ix].columns[col_ix];
-                                let (old_lo, old_hi) = stack.ranges[row_ix];
-                                let lo = gallop_le(column, old_lo, old_hi, value);
-                                let hi = gallop_leq(column, lo, old_hi, value);
-                                if lo < hi {
-                                    stack.ranges[row_ix] = (lo, hi);
-                                    i += 1;
-                                } else {
-                                    break;
-                                }
+                    for &(row, col) in rowcols.iter() {
+                        tail = match (&state.indexes[row].columns[col], &state.variables[var_ix]) {
+                            (&Values::Boolean(ref values), &Variable::Boolean(ref variable)) => {
+                                stage_narrow(
+                                    values,
+                                    &state.ranges[row],
+                                    |v| v.cmp(&variable.get()),
+                                    tail,
+                                )
                             }
+                            (&Values::Integer(ref values), &Variable::Integer(ref variable)) => {
+                                stage_narrow(
+                                    values,
+                                    &state.ranges[row],
+                                    |v| v.cmp(&variable.get()),
+                                    tail,
+                                )
+                            }
+                            (&Values::String(ref values), &Variable::String(ref variable)) => {
+                                stage_narrow(
+                                    values,
+                                    &state.ranges[row],
+                                    |v| (**v).cmp(variable.get()),
+                                    tail,
+                                )
+                            }
+                            _ => panic!(),
                         }
-
-                        // if all succeeded, continue with rest of constraints
-                        if i == rowcols.len() {
-                            tail(stack)?;
-                        }
-
-                        // restore previous state
-                        for (i, &(row_ix, _)) in rowcols.iter().enumerate() {
-                            stack.ranges[row_ix] = buffer[i];
-                        }
-
-                        Ok(())
                     }
+                    tail
                 } else {
-                    box move |stack| {
-
-                        // copy previous state
-                        for (i, &(row_ix, _)) in rowcols.iter().enumerate() {
-                            buffer[i] = stack.ranges[row_ix];
-                            local[i] = stack.ranges[row_ix];
+                    let columns: Vec<&Values> = rowcols
+                        .iter()
+                        .map(|&(row, col)| &state.indexes[row].columns[col])
+                        .collect();
+                    match (&*columns, &state.variables[var_ix]) {
+                        (&[&Values::Boolean(ref c0)], &Variable::Boolean(ref variable)) => {
+                            stage_join1(c0, &state.ranges[rowcols[0].0], |t| variable.set(t), tail)
                         }
-
-                        // find smallest range
-                        let (min_ix, &(row_ix, col_ix)) = rowcols
-                            .iter()
-                            .enumerate()
-                            .min_by_key(|&(_, &(row_ix, _))| {
-                                let (lo, hi) = stack.ranges[row_ix];
-                                hi - lo
-                            })
-                            .unwrap();
-                        let column = &indexes[row_ix].columns[col_ix];
-                        let (old_lo, old_hi) = local[min_ix];
-                        let mut lo = old_lo;
-
-                        // loop over rowcols[min_ix]
-                        while lo < old_hi {
-                            let value = &column.get(lo);
-                            let hi = gallop_leq(column, lo + 1, old_hi, value);
-                            stack.ranges[row_ix] = (lo, hi);
-                            {
-                                // search in each of rowcols[-min_ix]
-                                let mut i = 0;
-                                while i < rowcols.len() {
-                                    if i != min_ix {
-                                        let (row_ix, col_ix) = rowcols[i];
-                                        let column = &indexes[row_ix].columns[col_ix];
-                                        let (old_lo, old_hi) = local[i];
-                                        let lo = gallop_le(column, old_lo, old_hi, value);
-                                        let hi = gallop_leq(column, lo, old_hi, value);
-                                        if lo < hi {
-                                            stack.ranges[row_ix] = (lo, hi);
-                                            local[i] = (hi, old_hi);
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    i += 1;
-                                }
-                                // if all succeeded, continue with rest of constraints
-                                if i == rowcols.len() {
-                                    stack.variables[var_ix] = column.get(lo);
-                                    tail(stack)?;
-                                }
-                            }
-                            lo = hi;
+                        (&[&Values::Integer(ref c0)], &Variable::Integer(ref variable)) => {
+                            stage_join1(c0, &state.ranges[rowcols[0].0], |t| variable.set(t), tail)
                         }
-
-                        // restore previous state
-                        for (i, &(row_ix, _)) in rowcols.iter().enumerate() {
-                            stack.ranges[row_ix] = buffer[i];
+                        (&[&Values::String(ref c0)], &Variable::String(ref variable)) => {
+                            stage_join1(
+                                c0,
+                                &state.ranges[rowcols[0].0],
+                                |t| variable.set(&*t),
+                                tail,
+                            )
                         }
-
-                        Ok(())
+                        (&[&Values::Boolean(ref c0), &Values::Boolean(ref c1)],
+                         &Variable::Boolean(ref variable)) => {
+                            stage_join2(
+                                c0,
+                                c1,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                |t| variable.set(t),
+                                tail,
+                            )
+                        }
+                        (&[&Values::Integer(ref c0), &Values::Integer(ref c1)],
+                         &Variable::Integer(ref variable)) => {
+                            stage_join2(
+                                c0,
+                                c1,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                |t| variable.set(t),
+                                tail,
+                            )
+                        }
+                        (&[&Values::String(ref c0), &Values::String(ref c1)],
+                         &Variable::String(ref variable)) => {
+                            stage_join2(
+                                c0,
+                                c1,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                |t| variable.set(&*t),
+                                tail,
+                            )
+                        }
+                        (&[&Values::Boolean(ref c0), &Values::Boolean(ref c1), &Values::Boolean(ref c2)],
+                         &Variable::Boolean(ref variable)) => {
+                            stage_join3(
+                                c0,
+                                c1,
+                                c2,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                &state.ranges[rowcols[2].0],
+                                |t| variable.set(t),
+                                tail,
+                            )
+                        }
+                        (&[&Values::Integer(ref c0), &Values::Integer(ref c1), &Values::Integer(ref c2)],
+                         &Variable::Integer(ref variable)) => {
+                            stage_join3(
+                                c0,
+                                c1,
+                                c2,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                &state.ranges[rowcols[2].0],
+                                |t| variable.set(t),
+                                tail,
+                            )
+                        }
+                        (&[&Values::String(ref c0), &Values::String(ref c1), &Values::String(ref c2)],
+                         &Variable::String(ref variable)) => {
+                            stage_join3(
+                                c0,
+                                c1,
+                                c2,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                &state.ranges[rowcols[2].0],
+                                |t| variable.set(&*t),
+                                tail,
+                            )
+                        }
+                        (&[&Values::Boolean(ref c0), &Values::Boolean(ref c1), &Values::Boolean(ref c2), &Values::Boolean(ref c3)],
+                         &Variable::Boolean(ref variable)) => {
+                            stage_join4(
+                                c0,
+                                c1,
+                                c2,
+                                c3,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                &state.ranges[rowcols[2].0],
+                                &state.ranges[rowcols[3].0],
+                                |t| variable.set(t),
+                                tail,
+                            )
+                        }
+                        (&[&Values::Integer(ref c0), &Values::Integer(ref c1), &Values::Integer(ref c2), &Values::Integer(ref c3)],
+                         &Variable::Integer(ref variable)) => {
+                            stage_join4(
+                                c0,
+                                c1,
+                                c2,
+                                c3,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                &state.ranges[rowcols[2].0],
+                                &state.ranges[rowcols[3].0],
+                                |t| variable.set(t),
+                                tail,
+                            )
+                        }
+                        (&[&Values::String(ref c0), &Values::String(ref c1), &Values::String(ref c2), &Values::String(ref c3)],
+                         &Variable::String(ref variable)) => {
+                            stage_join4(
+                                c0,
+                                c1,
+                                c2,
+                                c3,
+                                &state.ranges[rowcols[0].0],
+                                &state.ranges[rowcols[1].0],
+                                &state.ranges[rowcols[2].0],
+                                &state.ranges[rowcols[3].0],
+                                |t| variable.set(&*t),
+                                tail,
+                            )
+                        }
+                        _ => panic!(),
                     }
                 }
             }
             Constraint::Apply(result_ix, result_already_fixed, function) => {
-                if result_already_fixed {
-                    box move |stack| {
-                        let result = function.apply(&*stack.variables)?;
-                        if stack.variables[result_ix] == result {
-                            tail(stack)
-                        } else {
-                            Ok(())
-                        }
+                let variable = &state.variables[result_ix];
+                match (function.output_kind(), variable) {
+                    (Kind::Boolean, &Variable::Boolean(ref variable)) => {
+                        let output = Cell::new(false);
+                        stage_apply(
+                            result_already_fixed,
+                            &output,
+                            variable,
+                            function.stage(&*state.variables, &Variable::Boolean(output)),
+                            tail,
+                        )
                     }
-                } else {
-                    box move |stack| {
-                        let result = function.apply(&*stack.variables)?;
-                        stack.variables[result_ix] = result;
-                        tail(stack)
+                    (Kind::Integer, &Variable::Integer(ref variable)) => {
+                        let output = Cell::new(0);
+                        stage_apply(
+                            result_already_fixed,
+                            &output,
+                            variable,
+                            function.stage(&*state.variables, &Variable::Integer(output)),
+                            tail,
+                        )
                     }
+                    (Kind::String, &Variable::String(ref variable)) => {
+                        let output = Cell::new("");
+                        stage_apply(
+                            result_already_fixed,
+                            &output,
+                            variable,
+                            function.stage(&*state.variables, &Variable::String(output)),
+                            tail,
+                        )
+                    }
+                    _ => panic!(),
                 }
             }
         }
-    } else {
-        box move |stack| {
-            for &(_, var_ix) in stack.result_vars.iter() {
-                stack.results.push(
-                    stack.variables[var_ix].really_to_owned(),
-                );
+    }
+
+    fn init_variable<'a>(&self, variables: &mut [Variable<'a>], indexes: &[Relation]) {
+        match self {
+            &Constraint::Join(var_ix, _, rowcols) => {
+                let (row, col) = rowcols[0];
+                variables[var_ix] = match &indexes[row].columns[col] {
+                    &Values::Boolean(_) => Variable::Boolean(Cell::new(false)),
+                    &Values::Integer(_) => Variable::Integer(Cell::new(0)),
+                    &Values::String(_) => Variable::String(Cell::new("")),
+                    _ => panic!(),
+                }
             }
-            Ok(())
+            &Constraint::Apply(var_ix, _, function) => {
+                variables[var_ix] = match function.output_kind() {
+                    Kind::Boolean => Variable::Boolean(Cell::new(false)),
+                    Kind::Integer => Variable::Integer(Cell::new(0)),
+                    Kind::String => Variable::String(Cell::new("")),
+                }
+            }
         }
+    }
+}
+
+impl Block {
+    fn stage<'a>(
+        &'a self,
+        state: &'a mut State<'a>,
+        results: &'a RefCell<Vec<Value<'static>>>,
+    ) -> Staged<'a> {
+        let variables: Vec<&Variable> = self.result_vars
+            .iter()
+            .map(|&(_, var_ix)| &state.variables[var_ix])
+            .collect();
+        let mut tail: Staged<'a> = box move || {
+            let results = results.borrow_mut();
+            for _ in variables.iter() {
+                // TODO actually push results!
+                results.push(Value::Boolean(false));
+            }
+        };
+        for constraint in self.constraints.iter().rev() {
+            tail = constraint.stage(state, tail);
+            constraint.init_variable(&mut state.variables, &state.indexes);
+        }
+        tail
     }
 }
 
@@ -440,6 +1039,43 @@ fn constrain<'a>(
     Ok(())
 }
 
+fn permuted<T: Clone>(values: &[T], ordering: &[usize]) -> Vec<T> {
+    ordering.iter().map(|&ix| values[ix].clone()).collect()
+}
+
+impl Values {
+    fn permuted(&self, ordering: &[usize]) -> Self {
+        match self {
+            &Values::Boolean(ref booleans) => Values::Boolean(permuted(booleans, ordering)),
+            &Values::Integer(ref integers) => Values::Integer(permuted(integers, ordering)),
+            &Values::String(ref strings) => Values::String(permuted(strings, ordering)),
+            &Values::Any(ref values) => Values::Any(permuted(values, ordering)),
+        }
+    }
+}
+
+impl Relation {
+    fn sorted(&self, ordering: &[usize]) -> Relation {
+        let len = if self.columns.len() > 0 {
+            self.columns[0].len()
+        } else {
+            0
+        };
+        let mut ixes = (0..len).collect::<Vec<_>>();
+        for &c in ordering.iter().rev() {
+            // stable sort
+            ixes.sort_by(|&r1, &r2| {
+                self.columns[c].get(r1).cmp(&self.columns[c].get(r2))
+            });
+        }
+        let sorted_columns = self.columns
+            .iter()
+            .map(|column| column.permuted(&*ixes))
+            .collect();
+        Relation { columns: sorted_columns }
+    }
+}
+
 pub struct Prepared {
     pub indexes: Vec<Relation>,
     pub ranges: Vec<LoHi>,
@@ -501,15 +1137,23 @@ pub fn run_block(block: &Block, prepared: &mut Prepared) -> Result<Vec<Value<'st
 }
 
 pub fn run_staged_block(block: &Block, prepared: &Prepared) -> Result<Vec<Value<'static>>, String> {
-    let mut stack = Stack {
-        ranges: prepared.ranges.clone(),
-        variables: block.variables.clone(),
-        result_vars: block.result_vars.clone(),
-        results: vec![],
+    let results = RefCell::new(vec![]);
+    let state = State {
+        indexes: &prepared.indexes,
+        ranges: prepared
+            .ranges
+            .iter()
+            .map(|&(lo, hi)| Cell::new((lo, hi)))
+            .collect(),
+        variables: block
+            .variables
+            .iter()
+            .map(|_| Variable::Boolean(Cell::new(false)))
+            .collect(),
     };
-    let mut staged = time!("stage", stage(&*block.constraints, &*prepared.indexes));
-    time!("query", staged(&mut stack)?);
-    Ok(stack.results)
+    let mut staged = time!("stage", block.stage(&mut state, &results));
+    time!("query", staged());
+    Ok(results.into_inner())
 }
 
 pub fn run_code(db: &DB, code: &str, cursor: i64) {

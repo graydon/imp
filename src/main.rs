@@ -110,7 +110,7 @@ mod bench {
                                 _ => (),
                             }
 
-                            bench(format!("interpreted\t{}_{}", name, i), || {
+                            bench(format!("staged\t{}_{}", name, i), || {
                                 run_staged_block(block, prepared)
                             });
                             bench(format!("interpreted\t{}_{}", name, i), || {
@@ -159,7 +159,7 @@ mod bench {
     }
 
     pub fn bench_all() {
-        bench_polynomial();
+        // bench_polynomial();
         // bench_code("chinook", &load_chinook());
         bench_code("imdb", &load_imdb());
     }

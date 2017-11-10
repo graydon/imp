@@ -83,6 +83,27 @@ impl<'a> Value<'a> {
             &Value::String(ref string) => Value::String(Cow::Owned(string.as_ref().to_owned())),
         }
     }
+
+    pub fn as_boolean(&self) -> bool {
+        match self {
+            &Value::Boolean(data) => data,
+            _ => panic!("Not boolean: {:?}", self),
+        }
+    }
+
+    pub fn as_integer(&self) -> i64 {
+        match self {
+            &Value::Integer(data) => data,
+            _ => panic!("Not integer: {:?}", self),
+        }
+    }
+
+    pub fn as_string(&self) -> &str {
+        match self {
+            &Value::String(ref data) => &*data,
+            _ => panic!("Not string: {:?}", self),
+        }
+    }
 }
 
 impl<'a> PartialEq<bool> for Value<'a> {
@@ -304,6 +325,23 @@ impl Function {
             }
         }
     }
+
+    pub fn output_kind(&self) -> Kind {
+        match self {
+            &Function::Add(_,_) => Kind::Integer,
+            &Function::Mul(_,_) => Kind::Integer,
+            &Function::Magic(_,_) => Kind::Integer,
+            &Function::Contains(_,_) => Kind::Boolean,
+            &Function::And(_,_) => Kind::Boolean,
+            &Function::Or(_,_) => Kind::Boolean,
+            &Function::Not(_) => Kind::Boolean,
+            &Function::Leq(_,_) => Kind::Boolean,
+            &Function::Le(_,_) => Kind::Boolean,
+            &Function::Geq(_,_) => Kind::Boolean,
+            &Function::Ge(_,_) => Kind::Boolean,
+            &Function::Eq(_,_) => Kind::Boolean,
+        }
+    } 
 
     pub fn compile<'a>(&self) -> Box<Fn(&[Value<'a>]) -> Result<Value<'static>, String>> {
         match self.clone() {

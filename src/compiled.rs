@@ -1,190 +1,6 @@
 use language::*;
 use interpreter::*;
 
-fn smaller((a_lo, a_hi): (usize, usize), (b_lo, b_hi): (usize, usize)) -> bool {
-    (a_hi - a_lo) < (b_hi - b_lo)
-}
-
-fn narrow<T1, T2, F>(
-    values: &[T1],
-    (lo, hi): (usize, usize),
-    value: &T2,
-    mut f: F
-) where
-    T1: ::std::borrow::Borrow<T2>,
-    T2: Ord + ?Sized,
-    F: FnMut((usize, usize)) {
-    let lo = gallop_le_inner(values, lo, hi, value);
-    let hi = gallop_leq_inner(values, lo, hi, value);
-    if lo < hi {
-        f((lo, hi))
-    }
-}
-
-fn join1<T, F>(
-    a: &[T],
-    (mut a_lo, a_hi): (usize, usize),
-    mut f: F
-) where
-    T: Ord,
-    F: FnMut((usize, usize)),
-{
-    while a_lo < a_hi {
-        let value = &a[a_lo];
-        let a_next_lo = gallop_leq_inner(a, a_lo, a_hi, value);
-        f((a_lo, a_next_lo));
-        a_lo = a_next_lo;
-    }
-}
-
-fn join_inner2<T, F>(
-    a: &[T],
-    b: &[T],
-    a_range: (usize, usize),
-    b_range: (usize, usize),
-    mut f: F,
-) where
-    T: Ord,
-    F: FnMut((usize, usize), (usize, usize)),
-{
-    let mut b_lo = b_range.0;
-    join1(a, a_range, |a_range| {
-        let value = &a[a_range.0];
-        narrow(b, (b_lo, b_range.1), value, |b_range| {
-            f(a_range, b_range);
-            b_lo = b_range.0;
-        });
-    });
-}
-
-fn join_inner3<T, F>(
-    a: &[T],
-    b: &[T],
-    c: &[T],
-    a_range: (usize, usize),
-    b_range: (usize, usize),
-    c_range: (usize, usize),
-    mut f: F,
-) where
-    T: Ord,
-    F: FnMut((usize, usize), (usize, usize), (usize, usize)),
-{
-    let mut c_lo = c_range.0;
-    join_inner2(a, b, a_range, b_range, |a_range, b_range| {
-        let value = &a[a_range.0];
-        narrow(c, (c_lo, c_range.1), value, |c_range| {
-            f(a_range, b_range, c_range);
-            c_lo = c_range.0;
-        });
-    });
-}
-
-fn join_inner4<T, F>(
-    a: &[T],
-    b: &[T],
-    c: &[T],
-    d: &[T],
-    a_range: (usize, usize),
-    b_range: (usize, usize),
-    c_range: (usize, usize),
-    d_range: (usize, usize),
-    mut f: F,
-) where
-    T: Ord,
-    F: FnMut((usize, usize), (usize, usize), (usize, usize), (usize, usize)),
-{
-    let mut d_lo = d_range.0;
-    join_inner3(a, b, c, a_range, b_range, c_range, |a_range, b_range, c_range| {
-        let value = &a[a_range.0];
-        narrow(d, (d_lo, d_range.1), value, |d_range| {
-            f(a_range, b_range, c_range, d_range);
-            d_lo = d_range.0;
-        });
-    });
-}
-
-fn join2<T, F>(
-    a: &[T],
-    b: &[T],
-    a_range: (usize, usize),
-    b_range: (usize, usize),
-    mut f: F,
-) where
-    T: Ord,
-    F: FnMut((usize, usize), (usize, usize)),
-{
-    if smaller(a_range, b_range) {
-        join_inner2(a, b, a_range, b_range, |a_range, b_range| {
-            f(a_range, b_range);
-        });
-    } else {
-        join_inner2(b, a, b_range, a_range, |b_range, a_range| {
-            f(a_range, b_range);
-        });
-    }
-}
-
-fn join3<T, F>(
-    a: &[T],
-    b: &[T],
-    c: &[T],
-    a_range: (usize, usize),
-    b_range: (usize, usize),
-    c_range: (usize, usize),
-    mut f: F,
-) where
-    T: Ord,
-    F: FnMut((usize, usize), (usize, usize), (usize, usize)),
-{
-    if smaller(a_range, b_range) && smaller(a_range, c_range) {
-        join_inner3(a, b, c, a_range, b_range, c_range, |a_range, b_range, c_range| {
-            f(a_range, b_range, c_range);
-        });
-    } else if smaller(b_range, a_range) && smaller(b_range, c_range) {
-        join_inner3(b, a, c, b_range, a_range, c_range, |b_range, a_range, c_range| {
-            f(a_range, b_range, c_range);
-        });
-    } else {
-        join_inner3(c, b, a, c_range, b_range, a_range, |c_range, b_range, a_range| {
-            f(c_range, b_range, a_range);
-        });
-    }
-}
-
-fn join4<T, F>(
-    a: &[T],
-    b: &[T],
-    c: &[T],
-    d: &[T],
-    a_range: (usize, usize),
-    b_range: (usize, usize),
-    c_range: (usize, usize),
-    d_range: (usize, usize),
-    mut f: F,
-) where
-    T: Ord,
-    F: FnMut((usize, usize), (usize, usize), (usize, usize), (usize, usize)),
-{
-    if smaller(a_range, b_range) && smaller(a_range, c_range) && smaller(a_range, d_range) {
-        join_inner4(a, b, c, d, a_range, b_range, c_range, d_range, |a_range, b_range, c_range, d_range| {
-            f(a_range, b_range, c_range, d_range);
-        });
-    } else if smaller(b_range, a_range) && smaller(b_range, c_range) && smaller(b_range, d_range) {
-        join_inner4(b, a, c, d, b_range, a_range, c_range, d_range, |b_range, a_range, c_range, d_range| {
-            f(b_range, a_range, c_range, d_range);
-        });
-    } else if smaller(c_range, a_range) && smaller(c_range, b_range) && smaller(c_range, d_range){
-        join_inner4(c, b, a, d, c_range, b_range, a_range, d_range, |c_range, b_range, a_range, d_range| {
-            f(a_range, b_range, c_range, d_range);
-        });
-    } else {
-        join_inner4(d, b, c, a, d_range, b_range, c_range, a_range, |d_range, b_range, c_range, a_range| {
-            f(a_range, b_range, c_range, d_range);
-        });
-    }
-}
-
-
 pub fn q1a(
     prepared: &Prepared,
 ) -> (Vec<i64>, Vec<i64>, Vec<i64>, Vec<String>, Vec<i64>, Vec<i64>, Vec<i64>, Vec<String>) {
@@ -226,8 +42,8 @@ pub fn q1a(
     let company_type_kind_range = (0, company_type_kind1.len());
     let movie_companies_note_range = (0, movie_companies_note1.len());
 
-    narrow(company_type_kind1, company_type_kind_range, "production companies", |company_type_kind_range| {
-        narrow(info_type_info1, info_type_info_range, "top 250 rank", |info_type_info_range| {
+    narrow(company_type_kind1, company_type_kind_range, |v| (**v).cmp("production companies"), |company_type_kind_range| {
+        narrow(info_type_info1, info_type_info_range, |v| (**v).cmp("top 250 rank"), |info_type_info_range| {
             // it
             join2(info_type_info0, movie_info_idx_info_type1, info_type_info_range, movie_info_idx_info_type_range, |info_type_info_range, movie_info_idx_info_type_range| {
                 // mi
@@ -312,8 +128,8 @@ pub fn q2c(
     let movie_companies_company_range = (0, movie_companies_company0.len());
     let company_name_country_code_range = (0, company_name_country_code0.len());
 
-    narrow(company_name_country_code1, company_name_country_code_range, "[sm]", |company_name_country_code_range| {
-        narrow(keyword_keyword1, keyword_keyword_range, "character-name-in-title", |keyword_keyword_range| {
+    narrow(company_name_country_code1, company_name_country_code_range, |v| (**v).cmp("[sm]"), |company_name_country_code_range| {
+        narrow(keyword_keyword1, keyword_keyword_range, |v| (**v).cmp("character-name-in-title"), |keyword_keyword_range| {
             // k
             join2(keyword_keyword0, movie_keyword_keyword1, keyword_keyword_range, movie_keyword_keyword_range, |keyword_keyword_range, movie_keyword_keyword_range| {
                 // mk
