@@ -19,6 +19,8 @@ macro query_not(clause)
   end
 end
 
+@time q1a()
+
 function q1a()
   @query begin 
     info_type.info(it, "top 250 rank")
