@@ -67,135 +67,129 @@ function count(fun::Relation, finger::RelationFinger)
   finger.hi - finger.lo
 end
 
-function first(fun::Relation, outer_finger::RelationFinger{C}) where {C}
+@generated function first(fun::Relation, outer_finger::RelationFinger{C}) where {C}
   C2 = C + 1
-  column = fun.columns[C2]
-  lo = outer_finger.lo
-  value = column[lo]
-  hi = gallop(column, lo, outer_finger.hi, value, 1)
-  RelationFinger{C2}(lo, hi)
-end
-
-function next(fun::Relation, outer_finger::RelationFinger{C}, inner_finger::RelationFinger{C2}) where {C, C2}
-  @assert C2 == C + 1
-  column = fun.columns[C2]
-  lo = inner_finger.hi
-  if lo < outer_finger.hi
+  quote
+    column = fun.columns[$C2]
+    lo = outer_finger.lo
     value = column[lo]
     hi = gallop(column, lo, outer_finger.hi, value, 1)
-    RelationFinger{C2}(lo, hi)
-  else 
-    RelationFinger{C2}(lo, outer_finger.hi)
+    RelationFinger{$C2}(lo, hi)
+  end
+end
+
+@generated function next(fun::Relation, outer_finger::RelationFinger{C}, inner_finger::RelationFinger{C2}) where {C, C2}
+  @assert C2 == C + 1
+  quote
+    column = fun.columns[C2]
+    lo = inner_finger.hi
+    if lo < outer_finger.hi
+      value = column[lo]
+      hi = gallop(column, lo, outer_finger.hi, value, 1)
+      RelationFinger{C2}(lo, hi)
+    else 
+      RelationFinger{C2}(lo, outer_finger.hi)
+    end
   end
 end
 
 # TODO can push this into gallop, to search lo and hi at same time
 #      or maybe use searchsorted if we can remove the cost of the subarray
-function seek(fun::Relation, finger::RelationFinger{C}, value) where {C}
+@generated function seek(fun::Relation, finger::RelationFinger{C}, value) where {C}
   C2 = C + 1
-  column = fun.columns[C2]
-  lo = gallop(column, finger.lo, finger.hi, value, 0)
-  hi = gallop(column, lo+1, finger.hi, value, 1)
-  RelationFinger{C2}(lo, hi)
+  quote 
+    column = fun.columns[$C2]
+    lo = gallop(column, finger.lo, finger.hi, value, 0)
+    hi = gallop(column, lo+1, finger.hi, value, 1)
+    RelationFinger{$C2}(lo, hi)
+  end
 end
 
 function get(fun::Relation, finger::RelationFinger{C}) where {C}
   fun.columns[C][finger.lo]
 end
 
-function _join(n)
-  quote
-    @nexprs $n (i) -> count_i = count(funs[i], fingers[i])
-    min_count = @ncall $n min (i) -> count_i
-    @nif $n (i) -> count_i == min_count (i) -> begin
-      join_inner(Val{i}, funs, fingers, f)
-    end
+function _join(num_funs, ixes, num_results, f)
+  n = length(ixes)
+  funs = [Symbol("ignored_fun_$i") for i in 1:num_funs]
+  outer_fingers = [Symbol("ignored_outer_finger_$i") for i in 1:num_funs]
+  result_fingers = [Symbol("ignored_outer_finger_$i") for i in 1:num_funs]
+  for i in 1:length(ixes)
+    funs[ixes[i]] = Symbol("fun_$i")
+    outer_fingers[ixes[i]] = Symbol("outer_finger_$i")
+    result_fingers[ixes[i]] = Symbol("inner_finger_$i")
   end
-end
-
-function _join_inner(min_i, n)
-  inner_fingers = [Symbol("inner_finger_$i") for i in 1:n]
-  body = quote 
-    f(value, @ntuple $n (i) -> inner_finger_i)
-  end
-  for i in 1:n
-    if i != min_i
-      body = quote
-        $(inner_fingers[i]) = seek(funs[$i], outer_fingers[$i], value)
-        if count(funs[$i], $(inner_fingers[i])) > 0
-          $body
+  inner_fingers = [Symbol("inner_finger_$i") for i in 1:length(ixes)]
+  results = [Symbol("result_$i") for i in 1:num_results]
+  quote 
+    function($(funs...), $(outer_fingers...), $(results...))
+      @nexprs $n (i) -> count_i = count(fun_i, outer_finger_i)
+      min_count = @ncall $n min (i) -> count_i
+      @nif $n (min) -> count_min == min_count (min) -> begin
+        inner_finger_min = first(fun_min, outer_finger_min)
+        while count(fun_min, inner_finger_min) > 0
+          let value = get(fun_min, inner_finger_min)
+            if (@nall $n (i) -> ((i == min) || begin
+                inner_finger_i = seek(fun_i, outer_finger_i, value)
+                count(fun_i, inner_finger_i) > 0
+              end))
+              $f($(funs...), $(result_fingers...), $(results...))
+            end
+            inner_finger_min = next(fun_min, outer_finger_min, inner_finger_min)
+          end
         end
       end
     end
   end
-  quote
-    $(inner_fingers[min_i]) = first(funs[$min_i], outer_fingers[$min_i])
-    while count(funs[$min_i], $(inner_fingers[min_i])) > 0
-      value = get(funs[$min_i], $(inner_fingers[min_i])) 
-      $body
-      $(inner_fingers[min_i]) = next(funs[$min_i], outer_fingers[$min_i], $(inner_fingers[min_i]))
-    end
-  end
 end
 
-@generated function join(funs::Tuple, fingers::Tuple, f::Function)
-  n = length(funs.parameters)
-  _join(n)
-end
+macroexpand(_join(2, [1,2], 0, :f))
 
-@generated function join_inner(::Type{Val{MinI}}, funs::Tuple, outer_fingers::Tuple, f::Function) where {MinI}
-  n = length(funs.parameters)
-  _join_inner(MinI, n)
+function join(num_funs, ixes, num_results, f)
+  eval(_join(num_funs, ixes, num_results, f))
 end
 
 using BenchmarkTools
 
-macroexpand(_join(2))
-macroexpand(_join_inner(1,2))
-
-function polynomial(xx, yy)
-  const results_x = Int64[]
-  const results_y = Int64[]
-  const results_z = Int64[]
-
-  const xx_finger = finger(xx)
-  const yy_finger = finger(yy)
-  join((xx, yy), (xx_finger, yy_finger), (i, fingers) -> begin
-    (xx_finger, yy_finger) = fingers
-    join((xx,), (xx_finger,), (x, fingers) -> begin
-      (xx_finger,) = fingers
-      join((yy,), (yy_finger,), (y, fingers) -> begin
-        (yy_finger,) = fingers
-        push!(results_x, x)
-        push!(results_y, y)
-        push!(results_z, (x * x) + (y * y) + (3 * x * y))
-      end)
-    end)
-  end)
-  
-  results_z
+function make_polynomial()
+  j0(xx, yy, xx_finger, yy_finger, results_x, results_y, results_z) = begin
+    x = get(xx, xx_finger)
+    y = get(yy, yy_finger)
+    push!(results_x, x)
+    push!(results_y, y)
+    push!(results_z, (x * x) + (y * y) + (3 * x * y))
+  end
+  j1 = join(2, [2], 3, j0)
+  j2 = join(2, [1], 3, j1)
+  j3 = join(2, [1,2], 3, j2)
+  j4(xx, yy, results_x, results_y, results_z) = begin 
+    j3(xx, yy, finger(xx), finger(yy), results_x, results_y, results_z)
+    results_z
+  end
+  (j0, j1, j2, j3, j4)
 end
 
-@show @time polynomial(
+(j0, j1, j2, j3, j4) = make_polynomial()
+
+@show @time j4(
   Relation((collect(0:10),collect(0:10))),
-  Relation((collect(0:10), collect(reverse(0:10))))
+  Relation((collect(0:10), collect(reverse(0:10)))),
+  Int64[], Int64[], Int64[],
 )
 
-# # @code_warntype polynomial([1,2],[1,4],[1,2],[1,-4])
-# # @code_llvm polynomial([1,2],[1,4],[1,2],[1,-4])
-# 
+xx = Relation((collect(0:10),collect(0:10)))
+yy = Relation((collect(0:10), collect(reverse(0:10))))
+@code_warntype j0(xx, yy, RelationFinger{2}(1,1), RelationFinger{2}(1,1), Int64[], Int64[], Int64[])
+@code_warntype j1(xx, yy, RelationFinger{2}(1,1), RelationFinger{1}(1,1), Int64[], Int64[], Int64[])
+@code_warntype j2(xx, yy, RelationFinger{1}(1,1), RelationFinger{1}(1,1), Int64[], Int64[], Int64[])
+@code_warntype j3(xx, yy, RelationFinger{0}(1,1), RelationFinger{0}(1,1), Int64[], Int64[], Int64[])
 
+@code_warntype first(xx, RelationFinger{0}(1,1))
 
-# @time polynomial(
-# collect(0:1000000),
-# collect(0:1000000),
-# collect(0:1000000),
-# collect(reverse(0:1000000))
-# )
-
-@show @benchmark polynomial(
+@show @benchmark $j4(
 $(Relation((collect(0:1000000),collect(0:1000000)))),
-$(Relation((collect(0:1000000), collect(reverse(0:1000000)))))
+$(Relation((collect(0:1000000), collect(reverse(0:1000000))))),
+Int64[], Int64[], Int64[],
 )
 
 end
