@@ -16,9 +16,20 @@ function is_finite(fun_type)
   false
 end
 
-# index(fun)
-# count(index, column)
-# first(index, column)
+# """
+#     index(fun, order)
+# """
+# function index end 
+# 
+# """
+#     count(index, column)
+# """
+# function count end
+# 
+# """
+#     first(index, column)
+# """
+# function first end
 # next(index, column)
 # seek(index, column)
 # get(index, column)
@@ -113,10 +124,179 @@ function get(index::RelationIndex, ::Type{Val{C}}) where {C}
   index.columns[C][index.los[C+1]]
 end
 
-# TODO eventually we will just pass variables down the call stack, so we won't need this
-function get_earlier(index::RelationIndex, ::Type{Val{C}}) where {C}
-  index.columns[C][index.los[end]]
-end
+# function find_var(var::Symbol, calls::Vector{Call})
+#   for (call_num, call) in enumerate(calls)
+#     for (arg_num, arg) in enumerate(call.args)
+#       if arg == var
+#         return (call_num, arg_num)
+#       end
+#     end
+#   end
+#   error("Not found")
+# end
+# 
+# function make_setup(funs, sort_orders, return_var_type, tail)
+#   indexes = map(zip(funs, sort_orders)) do fun_sort_order
+#     fun, sort_order = fun_sort_order
+#     source = if isa(fun, Symbol)
+#       :(funs[$(Expr(:quote, fun))])
+#     else
+#       fun
+#     end
+#     if sort_order != nothing
+#       sort_order_val = Val{tuple(sort_order...)}
+#       :(index($source, $sort_order_val))
+#     else
+#       source
+#     end
+#   end
+#   returns = [:($typ[]) for typ in return_var_type]
+#   quote
+#     (funs) -> begin
+#       returns = tuple($(returns...))
+#       $tail(tuple($(indexes...)), returns)
+#       returns
+#     end
+#   end
+# end
+# 
+# macro all(args...)
+#   reduce((acc, arg) -> :($arg && $acc), true, reverse(map(esc, args)))
+# end
+# 
+# function make_seek(fun_and_var_nums, index_and_column_nums, num_vars, tail)
+#   sort!(index_and_column_nums) # ensures that repeated variables are seeked in the correct order
+#   n = length(index_and_column_nums)
+#   index_nums = map((c) -> c[1], index_and_column_nums)
+#   column_nums = map((c) -> c[2], index_and_column_nums)
+#   is_repeated = [(i > 1) && (index_nums[i] == index_nums[i-1]) for i in 1:n]
+#   vars = [Symbol("var_$i") for i in 1:num_vars]
+#   calls = [:(indexes[$fun_num]($(vars[var_nums]...))) for (fun_num, var_nums) in fun_and_var_nums]
+#   tests = [:(value == $call) for call in calls]
+#   quote
+#     (indexes, returns, $(vars...)) -> begin
+#       value = $(calls[1])
+#       if value != nothing # handles partial functions
+#         if @all($(tests[2:end]...))
+#           if @nall $n (i) -> begin
+#             first(indexes[$index_nums[i]], Val{$column_nums[i]})
+#             seek(indexes[$index_nums[i]], Val{$column_nums[i]}, value)
+#           end
+#             $tail(indexes, returns, $(vars...), value)
+#           end
+#         end
+#       end
+#     end
+#   end
+# end
+# 
+# @inline function first_if(bool, index, column)
+#   if bool
+#     first(index, column)
+#   end
+# end
+# 
+# @inline function seek_if(bool, index, column, value)
+#   first_if(bool, index, column)
+#   seek(index, column, value)
+# end
+# 
+# function make_join(index_and_column_nums, num_vars, tail)
+#   sort!(index_and_column_nums) # ensures that repeated variables are seeked in the correct order
+#   n = length(index_and_column_nums)
+#   index_nums = map((c) -> c[1], index_and_column_nums)
+#   column_nums = map((c) -> c[2], index_and_column_nums)
+#   is_repeated = [(i > 1) && (index_nums[i] == index_nums[i-1]) for i in 1:n]
+#   vars = [Symbol("var_$i") for i in 1:num_vars]
+#   quote
+#     (indexes, returns, $(vars...)) -> begin
+#       @nexprs $n (i) -> count_i = if $is_repeated[i]
+#         typemax(Int64) # we can't iter over a repeated variable, so make sure we don't pick it
+#       else
+#         count(indexes[$index_nums[i]], Val{$column_nums[i]})
+#       end
+#       min_count = @ncall $n min (i) -> count_i
+#       @nexprs $n (i) -> first_if(!$is_repeated[i], indexes[$index_nums[i]], Val{$column_nums[i]})
+#       @nif $n (min) -> count_min == min_count (min) -> begin
+#         while next(indexes[$index_nums[min]], Val{$column_nums[min]})
+#           let value = get(indexes[$index_nums[min]], Val{$column_nums[min]})
+#             if @nall $n (i) -> ((i == min) || seek_if($is_repeated[i], indexes[$index_nums[i]], Val{$column_nums[i]}, value))
+#               $tail(indexes, returns, $(vars...), value)
+#             end
+#           end
+#         end
+#       end
+#     end
+#   end
+# end
+# 
+# function make_return(num_funs, num_vars, return_var_nums)
+#     vars = [Symbol("var_$i") for i in 1:num_vars]
+#     pushes = [:(push!(returns[$i], $(Symbol("var_$return_var_num")))) for (i, return_var_num) in enumerate(return_var_nums)]
+#     quote
+#         (indexes, returns, $(vars...)) -> begin
+#           $(pushes...)
+#         end
+#     end
+# end
+# 
+# function generate(lambda::Lambda, vars::Vector{Symbol}, fun_type::Function, var_type::Function) ::Function
+#   # TODO handle reduce variable too
+#   returned_vars = vcat(lambda.args, lambda.value)
+# 
+#   # permute all finite funs according to variable order
+#   sort_orders = Union{Vector{Int64}, Void}[]
+#   calls = Call[]
+#   for call in lambda.domain
+#     @show call.fun is_finite(fun_type(call.fun))
+#     if is_finite(fun_type(call.fun))
+#       sort_order = Vector(1:length(call.args))
+#       sort!(sort_order, by=(ix) -> findfirst(vars, call.args[ix]))
+#       push!(sort_orders, sort_order)
+#       push!(calls, Call(call.fun, call.args[sort_order]))
+#     else
+#       push!(sort_orders, nothing)
+#       push!(calls, call)
+#     end
+#   end
+# 
+#   # make return function
+#   # TODO just return everything for now, figure out reduce later
+#   returned_var_nums = map((var) -> findfirst(vars, var), returned_vars)
+#   @show tail = eval(make_return(length(calls), length(vars), returned_var_nums))
+# 
+#   # make join functions
+#   for (var_num, var) in reverse(collect(enumerate(vars)))
+#     index_and_column_nums = []
+#     fun_and_var_nums = []
+#     for (call_num, call) in enumerate(calls)
+#       for (column_num, arg) in enumerate(call.args)
+#         if arg == var
+#           if is_finite(fun_type(call.fun))
+#             # use all finite funs
+#             push!(index_and_column_nums, (call_num, column_num))
+#           elseif column_num == length(call.args)
+#             # only use infinite funs if this is the return variable
+#             var_nums = map((arg) -> findfirst(vars, arg), call.args[1:end-1])
+#             push!(fun_and_var_nums, (call_num, var_nums))
+#           end
+#         end
+#       end
+#     end
+#     @show fun_and_var_nums
+#     if isempty(fun_and_var_nums)
+#       @show tail = eval(make_join(index_and_column_nums, var_num - 1, tail))
+#     else
+#       @show tail = eval(make_seek(fun_and_var_nums, index_and_column_nums, var_num - 1, tail))
+#     end
+#   end
+# 
+#   funs = map((call) -> call.fun, calls)
+#   returned_var_type = map(var_type, returned_vars)
+#   @show tail = eval(make_setup(funs, sort_orders, returned_var_type, tail))
+# 
+#   tail
+# end
 
 struct Ring{T}
   add::Function
@@ -125,280 +305,176 @@ struct Ring{T}
   zero::T
 end
 
+const bool_ring = Ring{Bool}(|, &, true, false)
+
+struct LocalVar
+  name::Symbol
+end
+
+struct GlobalVar
+  name::Symbol
+end
+
+const Var = Union{LocalVar, GlobalVar}
+
+struct Constant
+  value::Any
+end
+
+struct Index
+  fun::GlobalVar
+  sort_order::Vector{Int64}
+end
+
 struct Call
-  fun # function, or anything which implements finite function interface
-  args::Vector{Any}
+  fun::Union{GlobalVar, Function, Constant, Index}
+  args::Vector{LocalVar} 
 end
 
-struct Lambda
+struct SumProduct # sum over var of product of values
   ring::Ring
-  args::Vector{Symbol}
-  domain::Vector{Call}
-  value::Vector{Any}
+  var::LocalVar
+  values::Vector{Union{SumProduct, Call, LocalVar}}
 end
 
-function find_var(var::Symbol, calls::Vector{Call})
-  for (call_num, call) in enumerate(calls)
-    for (arg_num, arg) in enumerate(call.args)
-      if arg == var
-        return (call_num, arg_num)
-      end
-    end
-  end
-  error("Not found")
-end
+const IR = Union{SumProduct, Call}
 
-function make_setup(funs, sort_orders, return_var_type, tail)
-  indexes = map(zip(funs, sort_orders)) do fun_sort_order
-    fun, sort_order = fun_sort_order
-    source = if isa(fun, Symbol)
-      :(funs[$(Expr(:quote, fun))])
-    else
-      fun
-    end
-    if sort_order != nothing
-      sort_order_val = Val{tuple(sort_order...)}
-      :(index($source, $sort_order_val))
-    else
-      source
-    end
-  end
-  returns = [:($typ[]) for typ in return_var_type]
+@generated function Base.foreach(f, ir::IR)
   quote
-    (funs) -> begin
-      returns = tuple($(returns...))
-      $tail(tuple($(indexes...)), returns)
-      returns
-    end
+    $((:(f(ir.$fieldname)) for fieldname in fieldnames(ir))...)
   end
 end
 
-macro all(args...)
-  reduce((acc, arg) -> :($arg && $acc), true, reverse(map(esc, args)))
-end
-
-function make_seek(fun_and_var_nums, index_and_column_nums, num_vars, tail)
-  sort!(index_and_column_nums) # ensures that repeated variables are seeked in the correct order
-  n = length(index_and_column_nums)
-  index_nums = map((c) -> c[1], index_and_column_nums)
-  column_nums = map((c) -> c[2], index_and_column_nums)
-  is_repeated = [(i > 1) && (index_nums[i] == index_nums[i-1]) for i in 1:n]
-  vars = [Symbol("var_$i") for i in 1:num_vars]
-  calls = [:(indexes[$fun_num]($(vars[var_nums]...))) for (fun_num, var_nums) in fun_and_var_nums]
-  tests = [:(value == $call) for call in calls]
+@generated function Base.map(f, ir::IR)
   quote
-    (indexes, returns, $(vars...)) -> begin
-      value = $(calls[1])
-      if value != nothing # handles partial functions
-        if @all($(tests[2:end]...))
-          if @nall $n (i) -> begin
-            first(indexes[$index_nums[i]], Val{$column_nums[i]})
-            seek(indexes[$index_nums[i]], Val{$column_nums[i]}, value)
-          end
-            $tail(indexes, returns, $(vars...), value)
-          end
-        end
-      end
-    end
+    $ir($((:(f(ir.$fieldname)) for fieldname in fieldnames(ir))...))
   end
 end
 
-@inline function first_if(bool, index, column)
-  if bool
-    first(index, column)
-  end
+# for now just order variables by order of appearance
+function choose_variable_order(ir::IR) ::Vector{LocalVar}
+  locals = LocalVar[]
+  collect(ir) = nothing
+  collect(ir::Union{IR, Vector}) = foreach(collect, ir)
+  collect(ir::LocalVar) = push!(locals, ir)
+  collect(ir)
+  unique(locals)
 end
 
-@inline function seek_if(bool, index, column, value)
-  first_if(bool, index, column)
-  seek(index, column, value)
-end
-
-function make_join(index_and_column_nums, num_vars, tail)
-  sort!(index_and_column_nums) # ensures that repeated variables are seeked in the correct order
-  n = length(index_and_column_nums)
-  index_nums = map((c) -> c[1], index_and_column_nums)
-  column_nums = map((c) -> c[2], index_and_column_nums)
-  is_repeated = [(i > 1) && (index_nums[i] == index_nums[i-1]) for i in 1:n]
-  vars = [Symbol("var_$i") for i in 1:num_vars]
-  quote
-    (indexes, returns, $(vars...)) -> begin
-      @nexprs $n (i) -> count_i = if $is_repeated[i]
-        typemax(Int64) # we can't iter over a repeated variable, so make sure we don't pick it
-      else
-        count(indexes[$index_nums[i]], Val{$column_nums[i]})
-      end
-      min_count = @ncall $n min (i) -> count_i
-      @nexprs $n (i) -> first_if(!$is_repeated[i], indexes[$index_nums[i]], Val{$column_nums[i]})
-      @nif $n (min) -> count_min == min_count (min) -> begin
-        while next(indexes[$index_nums[min]], Val{$column_nums[min]})
-          let value = get(indexes[$index_nums[min]], Val{$column_nums[min]})
-            if @nall $n (i) -> ((i == min) || seek_if($is_repeated[i], indexes[$index_nums[i]], Val{$column_nums[i]}, value))
-              $tail(indexes, returns, $(vars...), value)
-            end
-          end
-        end
-      end
-    end
-  end
-end
-
-function make_return(num_funs, num_vars, return_var_nums)
-    vars = [Symbol("var_$i") for i in 1:num_vars]
-    pushes = [:(push!(returns[$i], $(Symbol("var_$return_var_num")))) for (i, return_var_num) in enumerate(return_var_nums)]
-    quote
-        (indexes, returns, $(vars...)) -> begin
-          $(pushes...)
-        end
-    end
-end
-
-function generate(lambda::Lambda, fun_type::Function, var_type::Function) ::Function
-  # TODO handle reduce variable too
-  returned_vars = vcat(lambda.args, lambda.value)
-
-  # order variables by order of appearance in ast
-  vars = union((call.args for call in lambda.domain)...)
-  @show vars
-
-  # permute all finite funs according to variable order
-  sort_orders = Union{Vector{Int64}, Void}[]
-  calls = Call[]
-  for call in lambda.domain
-    @show call.fun is_finite(fun_type(call.fun))
-    if is_finite(fun_type(call.fun))
-      sort_order = Vector(1:length(call.args))
-      sort!(sort_order, by=(ix) -> findfirst(vars, call.args[ix]))
-      push!(sort_orders, sort_order)
-      push!(calls, Call(call.fun, call.args[sort_order]))
+function insert_indexes(ir::IR, vars::Vector{LocalVar}, types::Dict{Var, Type}) ::IR
+  insert(ir) = [ir]
+  insert(ir::Call) = begin
+    if (ir.fun isa GlobalVar) && is_finite(types[ir.fun])
+      # sort args in order they occur in vars
+      n = length(ir.args)
+      sort_order = Vector(1:n)
+      sort!(sort_order, by=(i) -> findfirst(vars, ir.args[i]))
+      # emit call to index for each prefix of args
+      [Call(Index(ir.fun, sort_order), ir.args[sort_order][1:i]) for i in 1:n]
     else
-      push!(sort_orders, nothing)
-      push!(calls, call)
+      [ir]
     end
   end
-
-  # make return function
-  # TODO just return everything for now, figure out reduce later
-  returned_var_nums = map((var) -> findfirst(vars, var), returned_vars)
-  @show tail = eval(make_return(length(calls), length(vars), returned_var_nums))
-
-  # make join functions
-  for (var_num, var) in reverse(collect(enumerate(vars)))
-    index_and_column_nums = []
-    fun_and_var_nums = []
-    for (call_num, call) in enumerate(calls)
-      for (column_num, arg) in enumerate(call.args)
-        if arg == var
-          if is_finite(fun_type(call.fun))
-            # use all finite funs
-            push!(index_and_column_nums, (call_num, column_num))
-          elseif column_num == length(call.args)
-            # only use infinite funs if this is the return variable
-            var_nums = map((arg) -> findfirst(vars, arg), call.args[1:end-1])
-            push!(fun_and_var_nums, (call_num, var_nums))
-          end
-        end
-      end
-    end
-    @show fun_and_var_nums
-    if isempty(fun_and_var_nums)
-      @show tail = eval(make_join(index_and_column_nums, var_num - 1, tail))
-    else
-      @show tail = eval(make_seek(fun_and_var_nums, index_and_column_nums, var_num - 1, tail))
-    end
+  insert(ir::SumProduct) = begin
+    values = vcat(map(insert, ir.values)...)
+    [SumProduct(ir.ring, ir.var, values)]
   end
-
-  funs = map((call) -> call.fun, calls)
-  returned_var_type = map(var_type, returned_vars)
-  @show tail = eval(make_setup(funs, sort_orders, returned_var_type, tail))
-
-  tail
+  insert(ir)[1]
 end
 
-function handle_constants(lambda::Lambda) ::Lambda
-  constants = Call[]
-  
-  handle_constant = (arg) -> begin
-    if isa(arg, Symbol)
-      arg
-    else
-      var = gensym("constant")
-      push!(constants, Call(() -> arg, [var]))
-      var
-    end
-  end
-  
-  domain = map(lambda.domain) do call
-    Call(call.fun, map(handle_constant, call.args))
-  end
-  
-  value = map(handle_constant, lambda.value)
-  
-  Lambda(lambda.ring, lambda.args, vcat(constants, domain), value)
-end
+types = Dict{Var, Type}(GlobalVar(:xx) => typeof(xx))
 
-function compile(lambda::Lambda, fun_type::Function, var_type::Function)
-  lambda = handle_constants(lambda)
-  generate(lambda, fun_type, var_type)
-end
+insert_indexes(
+SumProduct(bool_ring, LocalVar(:x), [Call(GlobalVar(:xx), [LocalVar(:x), LocalVar(:i)])]),
+[LocalVar(:i), LocalVar(:x)],
+Dict{Var, Type}(GlobalVar(:xx) => typeof(xx))
+)
 
-zz(x, y) = (x * x) + (y * y) + (3 * x * y)
+# function compile(lambda::Lambda, globals::Function, var_type::Function)
+#   lambda = handle_constants(lambda)
+#   vars = choose_variable_order(lambda)
+#   generate(lambda, vars, fun_type, var_type)
+# end
 
-polynomial_ast1 = Lambda(
-  Ring{Int64}(+,*,1,0),
-  [:x, :y],
-  [
-    Call(:xx, [:i, :x]),
-    Call(:yy, [:i, :y]),
-    Call(:zz, [:x, :y, :z]),
-  ],
-  [:z]
-  )
+# function handle_constants(lambda::Lambda) ::Lambda
+#   constants = Call[]
+#   
+#   handle_constant = (arg) -> begin
+#     if isa(arg, Symbol)
+#       arg
+#     else
+#       var = gensym("constant")
+#       push!(constants, Call(() -> arg, [var]))
+#       var
+#     end
+#   end
+#   
+#   domain = map(lambda.domain) do call
+#     Call(call.fun, map(handle_constant, call.args))
+#   end
+#   
+#   value = map(handle_constant, lambda.value)
+#   
+#   Lambda(lambda.ring, lambda.args, vcat(constants, domain), value)
+# end
 
-polynomial_ast2 = Lambda(
-  Ring{Int64}(+,*,1,0),
-  [:x, :y],
-  [
-    Call(:xx, [:x, :x]),
-    Call(:yy, [:x, :y]),
-    Call(:zz, [:x, :y, :z]),
-  ],
-  [:z]
-  )
-  
-zz(x, y) = (x * x) + (y * y) + (3 * x * y)
-  
-polynomial_ast3 = Lambda(
-    Ring{Int64}(+,*,1,0),
-    [:x, :y],
-    [  
-      Call(:xx, [:i, :x]),
-      Call(:yy, [:i, :y]),
-      Call(*, [:x, :x, :t1]),
-      Call(*, [:y, :y, :t2]),
-      Call(*, [3, :x, :y, :t3]),
-      Call(+, [:t1, :t2, :t3, :z])
-    ],
-    [:z]
-    )
-
+# zz(x, y) = (x * x) + (y * y) + (3 * x * y)
+# 
+# polynomial_ast1 = Lambda(
+#   Ring{Int64}(+,*,1,0),
+#   [:x, :y],
+#   [
+#     Call(:xx, [:i, :x]),
+#     Call(:yy, [:i, :y]),
+#     Call(:zz, [:x, :y, :z]),
+#   ],
+#   [:z]
+#   )
+# 
+# polynomial_ast2 = Lambda(
+#   Ring{Int64}(+,*,1,0),
+#   [:x, :y],
+#   [
+#     Call(:xx, [:x, :x]),
+#     Call(:yy, [:x, :y]),
+#     Call(:zz, [:x, :y, :z]),
+#   ],
+#   [:z]
+#   )
+#   
+# zz(x, y) = (x * x) + (y * y) + (3 * x * y)
+#   
+# polynomial_ast3 = Lambda(
+#     Ring{Int64}(+,*,1,0),
+#     [:x, :y],
+#     [  
+#       Call(:xx, [:i, :x]),
+#       Call(:yy, [:i, :y]),
+#       Call(*, [:x, :x, :t1]),
+#       Call(*, [:y, :y, :t2]),
+#       Call(*, [3, :x, :y, :t3]),
+#       Call(+, [:t1, :t2, :t3, :z])
+#     ],
+#     [:z]
+#     )
+# 
 const xx = Relation((collect(0:1000),collect(0:1000)))
 const yy = Relation((collect(0:1000), collect(reverse(0:1000))))
-const big_xx = Relation((collect(0:1000000),collect(0:1000000)))
-const big_yy = Relation((collect(0:1000000), collect(reverse(0:1000000))))
-
-fun_type(fun) = typeof(eval(fun))
-var_type = Dict(:i => Int64, :x => Int64, :y => Int64, :z => Int64)
-const p1 = compile(polynomial_ast1, fun_type, (var) -> var_type[var])
-const p2 = compile(polynomial_ast2, fun_type, (var) -> var_type[var])
-const p3 = compile(polynomial_ast3, fun_type, (var) -> var_type[var])
-
-inputs = Dict(:xx => xx, :yy => yy, :zz => zz)
-@time p1(inputs)
-@time p2(inputs)
-@time p3(inputs)
-@assert p1(inputs) == p2(inputs)
-@assert p1(inputs) == p3(inputs)
+# const big_xx = Relation((collect(0:1000000),collect(0:1000000)))
+# const big_yy = Relation((collect(0:1000000), collect(reverse(0:1000000))))
+# 
+# fun_type(fun) = typeof(eval(fun))
+# var_type = Dict(:i => Int64, :x => Int64, :y => Int64, :z => Int64)
+# const p1 = compile(polynomial_ast1, fun_type, (var) -> var_type[var])
+# const p2 = compile(polynomial_ast2, fun_type, (var) -> var_type[var])
+# const p3 = compile(polynomial_ast3, fun_type, (var) -> var_type[var])
+# 
+# inputs = Dict(:xx => xx, :yy => yy, :zz => zz)
+# @time p1(inputs)
+# @time p2(inputs)
+# @time p3(inputs)
+# @assert p1(inputs) == p2(inputs)
+# @assert p1(inputs) == p3(inputs)
 
 # using BenchmarkTools
 # big_inputs = Dict(:xx => big_xx, :yy => big_yy, :zz => zz)
