@@ -1,7 +1,6 @@
 module Data
 
 using Match
-using NullableArrays
 using Base.Test
 
 @generated function cmp_in{T <: Tuple}(xs::T, ys::T, x_at::Int, y_at::Int)
