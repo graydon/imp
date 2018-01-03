@@ -186,14 +186,14 @@ using Imp.Compiler
     
   end
 
-  # using BenchmarkTools
-  # const big_xx = Relation((collect(0:1000000),collect(0:1000000)))
-  # const big_yy = Relation((collect(0:1000000), collect(reverse(0:1000000))))
-  # big_inputs = Dict(:xx => big_xx, :yy => big_yy, :zz => zz)
-  # @show @benchmark p1(big_inputs)()
-  # @show @benchmark p2(big_inputs)()
-  # @show @benchmark p3(big_inputs)()
-
 end
+
+# using BenchmarkTools
+# const big_xx = Relation((collect(0:1000000),collect(0:1000000)))
+# const big_yy = Relation((collect(0:1000000), collect(reverse(0:1000000))))
+# big_inputs = Dict(:xx => big_xx, :yy => big_yy, :zz => zz)
+# @show @benchmark p1(big_inputs)()
+# @show @benchmark p2(big_inputs)()
+# @show @benchmark p3(big_inputs)()
 
 end
