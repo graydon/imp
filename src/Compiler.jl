@@ -601,7 +601,7 @@ function infer_var_types(lambda::Lambda, fun_type::Function, vars::Vector{Symbol
     end
     # if at fixpoint, return
     if new_var_type == var_type
-      return @show var_type
+      return var_type
     else
       var_type = new_var_type
     end
@@ -620,7 +620,7 @@ function compile_function(lambda::Lambda, fun_type::Function)
   program = insert_indexes(program, vars, fun_type)
   program = factorize(program, vars)
   code = macroexpand(quote
-    @program($program, $fun_type)
+    @Compiler.program($program, $fun_type)
   end)
   # @show simplify_expr(code)
   eval(code)
@@ -628,7 +628,7 @@ end
 
 function compile_relation(lambda::Lambda, fun_type::Function)
   lambda = lower_constants(lambda)
-  @show vars = order_vars(lambda)
+  vars = order_vars(lambda)
   raw_var_type = infer_var_types(lambda, fun_type, vars)
   var_type = (var) -> raw_var_type[var]
   args = lambda.args
@@ -638,10 +638,12 @@ function compile_relation(lambda::Lambda, fun_type::Function)
   program = factorize(program, vars)
   program = relationalize(program, args, vars, var_type)
   code = macroexpand(quote
-    @program($program, $fun_type)
+    @Compiler.program($program, $fun_type)
   end)
-  @show simplify_expr(code)
+  # @show simplify_expr(code)
   eval(code)
 end
+
+export FunCall, Constant, Ring, SumProduct, Lambda, compile_relation, compile_function
 
 end
