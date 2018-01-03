@@ -1,9 +1,9 @@
-module Compiled
+module Compiler
 
 using Base.Cartesian
 using Match
 
-using Data
+using Imp.Data
 
 # --- ast ---
 
@@ -430,7 +430,7 @@ end
 
 # --- compiler ----
 
-function Compiled.factorize(program::Program, vars::Vector{Symbol}) ::Program
+function Compiler.factorize(program::Program, vars::Vector{Symbol}) ::Program
   @assert length(program.funs) == 1
   lambda = program.funs[1]
 

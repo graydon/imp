@@ -1,7 +1,9 @@
 module Parser
 
-using Data
-using Compiler
+using Match
+
+using Imp.Data
+using Imp.Compiler
 
 function parse_when(expr, mod::Module) ::FunCall
   # collect variables
