@@ -76,6 +76,31 @@ mutable struct Program
   funs::Vector{Union{Lambda, Return}} # must in definition order - can't call funs that haven't been defined yet
 end
 
+# --- better IR rendering in Juno
+
+if isdefined(Main, :Juno)
+  head(ir::Function) = string(ir)
+  head(ir::Symbol) = string(ir)
+  head(ir::Union{FunCall, IndexCall}) = "$(head(ir.name))($(join(ir.args, ", ")))"
+  head(ir::SumProduct) = "+= $(join(map(head, ir.value), " * ")) <- $(join(map(head, ir.domain), ", "))"
+  head(ir::Insert) = "= $(head(ir.value)); $(ir.result_name) += ($(join(map(head, ir.args), ", ")))"
+  head(ir::Lambda) = "$(ir.name)($(join(map(head, ir.args), ", "))) $(head(ir.body))"
+  
+  function Main.Juno.render(i::Main.Juno.Inline, ir::Union{FunCall,IndexCall, Lambda})
+    t = Main.Juno.render(i, Main.Juno.defaultrepr(ir))
+    t[:head] = Main.Juno.render(i, Text("$(typeof(ir)): $(head(ir))"))
+    return t
+  end
+  
+  macro render(expr)
+    quote
+      print($(string(expr)))
+      println(" = ")
+      Main.Juno.render($(esc(expr)))
+    end
+  end
+end
+
 # --- util ---
 
 function simplify_expr(expr::Expr)
