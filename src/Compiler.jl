@@ -79,6 +79,7 @@ end
 # --- better IR rendering in Juno
 
 if isdefined(Main, :Juno)
+  head(ir::Constant) = repr(ir.value)
   head(ir::Function) = string(ir)
   head(ir::Symbol) = string(ir)
   head(ir::Union{FunCall, IndexCall}) = "$(head(ir.name))($(join(ir.args, ", ")))"
@@ -97,7 +98,7 @@ if isdefined(Main, :Juno)
       value = $(esc(expr))
       print($(string(expr)))
       println(" = ")
-      Main.Juno.render(deepcopy(value))
+      Main.Juno.render(value)
       value
     end
   end
