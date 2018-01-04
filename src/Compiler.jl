@@ -94,9 +94,11 @@ if isdefined(Main, :Juno)
   
   macro render(expr)
     quote
+      value = $(esc(expr))
       print($(string(expr)))
       println(" = ")
-      Main.Juno.render($(esc(expr)))
+      Main.Juno.render(deepcopy(value))
+      value
     end
   end
 end
