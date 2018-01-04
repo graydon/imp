@@ -231,25 +231,26 @@ function get_index(::Type{Relation{T}}, fun::Symbol, permutation::Vector{Int64})
 end
 
 # technically wrong, but good enough for now
-function count(::Type{Relation{T}}, index::Symbol, args::Vector{Symbol}) where {T}
+function count(::Type{Relation{T}}, index::Symbol, args::Vector{Symbol}, var::Symbol) where {T}
+@assert var == args[end]
   first_column = findfirst(args, args[end]) # first repetition of last var
   quote
     $(esc(index)).his[$first_column+1] - $(esc(index)).los[$first_column+1]
   end
 end
 
-function iter(::Type{Relation{T}}, index::Symbol, args::Vector{Symbol}, f) where {T}
+function iter(::Type{Relation{T}}, index::Symbol, args::Vector{Symbol}, var::Symbol, f) where {T}
+  @assert var == args[end]
   first_column = findfirst(args, args[end]) # first repetition of last var
   last_column = length(args)
-  value = gensym("value")
   quote
     while next($(esc(index)), $(Val{first_column}))
-      $(esc(value)) = $(esc(index)).columns[$first_column][$(esc(index)).los[$first_column+1]]
+      $(esc(var)) = $(esc(index)).columns[$first_column][$(esc(index)).los[$first_column+1]]
       if (&)($(@splice column in (first_column+1):last_column quote
         $(esc(index)).his[$column+1] = $(esc(index)).los[$column]
-        seek($(esc(index)), $(Val{column}), $(esc(value)))
+        seek($(esc(index)), $(Val{column}), $(esc(var)))
       end),)
-        $(esc(inline(f, value)))
+        $(esc(inline(f, var)))
       end
     end
   end
@@ -288,15 +289,25 @@ function can_index(::Type{T}) where {T <: Function}
   false
 end
 
-function count(::Type{T}, fun, args::Vector{Symbol}) where {T <: Function}
-  1
+function count(::Type{T}, fun, args::Vector{Symbol}, var::Symbol) where {T <: Function}
+  if var == args[end]
+    1
+  else 
+    typemax(Int64)
+  end
 end
 
-function iter(::Type{T}, fun, args::Vector{Symbol}, f) where {T <: Function}
+function iter(::Type{T}, fun, args::Vector{Symbol}, var::Symbol, f) where {T <: Function}
   value = gensym("value")
-  quote
-    $(esc(value)) = $(esc(fun))($(map(esc, args[1:end-1])...))
-    $(esc(inline(f, value)))
+  if var == args[end]
+    quote
+      $(esc(args[end])) = $(esc(fun))($(map(esc, args[1:end-1])...))
+      $(esc(inline(f, var)))
+    end
+  else
+    quote
+      error($("Cannot join over $fun($(join(args, ", ")))"))
+    end
   end
 end
 
@@ -322,8 +333,8 @@ end
 
 # --- codegen ---
 
-macro count(call); count(call.typ, call.name, convert(Vector{Symbol}, call.args)); end
-macro iter(call, f); iter(call.typ, call.name, convert(Vector{Symbol}, call.args), f); end
+macro count(call, var); count(call.typ, call.name, convert(Vector{Symbol}, call.args), var); end
+macro iter(call, var, f); iter(call.typ, call.name, convert(Vector{Symbol}, call.args), var, f); end
 macro prepare(call); prepare(call.typ, call.name, convert(Vector{Symbol}, call.args)); end
 macro contains(call); contains(call.typ, call.name, convert(Vector{Symbol}, call.args)); end
 
@@ -374,11 +385,11 @@ macro product(ring::Ring, domain::Vector{Union{FunCall, IndexCall}}, value::Vect
   end
 end
 
-macro sum(ring::Ring, call::Union{FunCall, IndexCall}, f)
+macro sum(ring::Ring, call::Union{FunCall, IndexCall}, var, f)
   value = gensym("value")
   quote
     result = $(ring.zero)
-    @iter($call, ($(esc(value))) -> begin
+    @iter($call, $(esc(var)), ($(esc(value))) -> begin
       result = $(ring.add)(result, $(esc(inline(f, value))))
     end)
     result
@@ -395,12 +406,12 @@ macro body(args::Vector{Symbol}, body::SumProduct)
       @prepare($call)
     end)
     mins = tuple($(@splice call in body.domain quote
-      @count($call)
+      @count($call, $(esc(var)))
     end))
     min = Base.min(mins...)
     $(@splice i in 1:length(body.domain) quote
       if mins[$i] == min
-        return @sum($(body.ring), $(body.domain[i]), ($(esc(var))) -> begin
+        return @sum($(body.ring), $(body.domain[i]), $(esc(var)), ($(esc(var))) -> begin
           @product($(body.ring), $(body.domain[1:length(body.domain) .!= i]), $(body.value))
         end)
       end
