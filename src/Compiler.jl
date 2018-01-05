@@ -658,10 +658,10 @@ function compile_function(lambda::Lambda, fun_type::Function)
   program = Program([], [lambda])
   program = insert_indexes(program, vars, fun_type)
   program = factorize(program, vars)
-  code = macroexpand(quote
+  code = macroexpand(Compiler, quote
     @Compiler.program($program, $fun_type)
   end)
-  # @show simplify_expr(code)
+  # @render simplify_expr(code)
   eval(code)
 end
 
@@ -676,10 +676,10 @@ function compile_relation(lambda::Lambda, fun_type::Function)
   program = insert_indexes(program, vars, fun_type)
   program = factorize(program, vars)
   program = relationalize(program, args, vars, var_type)
-  code = macroexpand(quote
+  code = macroexpand(Compiler, quote
     @Compiler.program($program, $fun_type)
   end)
-  # @show simplify_expr(code)
+  # @render simplify_expr(code)
   eval(code)
 end
 
