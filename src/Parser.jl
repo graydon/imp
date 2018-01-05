@@ -11,6 +11,7 @@ function parse_when(expr, mod::Module) ::FunCall
   args = Union{Symbol, Constant}[]
   walk(expr) = @match expr begin
     _::Symbol => push!(args, expr)
+    Expr(:call, [:in, var, set], _) => walk(var) 
     Expr(:call, [head, exprs...], _) => walk(exprs)
     Expr(:macrocall, [head, exprs...], _) => walk(exprs)
     Expr(:(&&), exprs, _) => walk(exprs)
@@ -94,7 +95,10 @@ function parse_query(body, mod::Module) ::Lambda
   for line in lines
     @match line begin
       Expr(:macrocall, [head, expr], _) => @match head begin
-        Symbol("@when") => push!(domain, parse_when(expr, mod))
+        Symbol("@when") => @match expr begin
+          Expr(:call, [:in, var, set], _) => push!(domain, parse_call([:in, var, set], mod))
+          _ => push!(domain, parse_when(expr, mod))
+        end
         _ => error("Unknown macro: $head")
       end
       Expr(:return, exprs, _) => append!(args, parse_return(exprs, mod))
