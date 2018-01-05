@@ -233,10 +233,10 @@ end
 
 # technically wrong, but good enough for now
 function count(::Type{Relation{T}}, index::Symbol, args::Vector{Symbol}, var::Symbol) where {T}
-@assert var == args[end]
+  @assert var == args[end]
   first_column = findfirst(args, args[end]) # first repetition of last var
   quote
-    $(esc(index)).his[$first_column+1] - $(esc(index)).los[$first_column+1]
+    $(esc(index)).his[$first_column] - $(esc(index)).los[$first_column]
   end
 end
 
