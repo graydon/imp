@@ -117,17 +117,17 @@ q = parse_query(quote
   return (note::String, title::String, production_year::Int64)
 end, JobData)
 
-find(q.body.domain) do call
-  isa(call.name, Function)
-end
-
-q.body.domain[10].typ
-Base.return_types(q.body.domain[10].name, (String,))
-
+fun_type(fun) = typeof(eval(fun))
 p = compile_relation(q, fun_type)
 
 names = filter((name) -> !isa(name, Function), map((call) -> call.name, q.body.domain))
 env = Dict((name => eval(name) for name in names))
-p(env)
+@code_warntype p(env)
+
+t = Data.index(env[:(info_type.info)], [2,1])
+i1 = Compiler.RelationIndex((t[2], t[1]))
+t = Data.index(env[:(movie_info_idx.info_type)], [2,1])
+i2 = Compiler.RelationIndex((t[2], t[1]))
+
 
 end

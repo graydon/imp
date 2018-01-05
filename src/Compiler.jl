@@ -3,6 +3,7 @@ module Compiler
 using Base.Cartesian
 using Match
 
+using Imp.Util
 using Imp.Data
 
 # --- ast ---

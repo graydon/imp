@@ -2,9 +2,10 @@ module JobData
 
 # separate module because this takes a long time, don't want to rerun it every test
 
-using Data
 using DataFrames
 using JLD
+
+using Imp.Data
 
 function intern{T}(column::Vector{T})
   if !isbits(T)
