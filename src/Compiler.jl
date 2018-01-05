@@ -192,7 +192,7 @@ function next(index::RelationIndex, ::Type{Val{C}}) where {C}
     value = column[lo]
     hi = gallop(column, lo+1, prev_hi, value, 1)
     index.los[C+1] = lo
-    index.his[C+1] = hi
+    index.his[C+1] = min(prev_hi, hi)
     lo < hi
   else
     false
@@ -207,7 +207,7 @@ function seek(index::RelationIndex, ::Type{Val{C}}, value) where {C}
     lo = gallop(column, lo, prev_hi, value, 0)
     hi = gallop(column, lo+1, prev_hi, value, 1)
     index.los[C+1] = lo
-    index.his[C+1] = hi
+    index.his[C+1] = min(prev_hi, hi)
     lo < hi
   else
     false
