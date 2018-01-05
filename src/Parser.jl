@@ -2,6 +2,7 @@ module Parser
 
 using Match
 
+using Imp.Util
 using Imp.Data
 using Imp.Compiler
 

@@ -134,12 +134,6 @@ end
 
 Base.eltype(ring::Ring{T}) where {T} = T
 
-macro splice(iterator, body)
-  @assert iterator.head == :call
-  @assert iterator.args[1] == :in
-  Expr(:..., :(($(esc(body)) for $(esc(iterator.args[2])) in $(esc(iterator.args[3])))))
-end
-
 function inline(function_expr::Expr, value)
   @match function_expr begin
     Expr(:->, [var::Symbol, body], _)  => quote

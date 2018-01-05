@@ -9,6 +9,12 @@ macro showtime(expr)
   end
 end
 
-export @showtime
+macro splice(iterator, body)
+  @assert iterator.head == :call
+  @assert iterator.args[1] == :in
+  Expr(:..., :(($(esc(body)) for $(esc(iterator.args[2])) in $(esc(iterator.args[3])))))
+end
+
+export @showtime, @splice
 
 end
