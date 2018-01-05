@@ -2885,24 +2885,28 @@ function query_names(nums=1:33)
 end
 
 function test(qs = query_names())
-  for query_name in qs
-    @test_nowarn results_imp = eval(Symbol("q$(query_name)"))()
-    query = rstrip(readline("../job/$(query_name).sql"))
-    query = query[1:(length(query)-1)] # drop ';' at end
-    query = replace(query, "MIN", "")
-    query = "copy ($query) to '/tmp/results.csv' with CSV DELIMITER ',';"
-    run(`sudo -u postgres psql -c $query`)
-    frame = DataFrames.readtable(open("/tmp/results.csv"), header=false, eltypes=[eltype(c) for c in results_imp.columns])
-    num_columns = length(results_imp)
-    @show query_name now()
-    if length(frame.columns) == 0
-      @test length(results_imp[1]) == 0
-    else
-      results_pg = Relation(tuple((frame[ix].data for ix in 1:num_columns)...), num_columns)
-      (imp_only, pg_only) = Data.diff(results_imp, results_pg)
-      imp_only = map((c) -> c[1:min(10, length(c))], imp_only)
-      pg_only = map((c) -> c[1:min(10, length(c))], pg_only)
-      @test imp_only == pg_only # ie both empty - but @test will print both otherwise
+  @testset "queries" begin
+    @testset "query $query_name" for query_name in qs
+      results_imp = @test_nowarn eval(Symbol("q$(query_name)"))()
+      columns = [eltype(c) == Int16 ? convert(Vector{Int64}, c) : c for c in results_imp.columns]
+      results_imp = Relation(tuple(columns[1:end-1]...), results_imp.num_keys)
+      query = rstrip(readline("../job/$(query_name).sql"))
+      query = query[1:(length(query)-1)] # drop ';' at end
+      query = replace(query, "MIN", "")
+      query = "copy ($query) to '/tmp/results.csv' with CSV DELIMITER ',';"
+      run(`sudo -u postgres psql -c $query`)
+      frame = DataFrames.readtable(open("/tmp/results.csv"), header=false, eltypes=[eltype(c) for c in results_imp.columns])
+      num_columns = length(results_imp)
+      @show query_name now()
+      if length(frame.columns) == 0
+        @test length(results_imp[1]) == 0
+      else
+        results_pg = Relation(tuple((frame[ix].data for ix in 1:num_columns)...), num_columns)
+        (imp_only, pg_only) = Data.diff(results_imp, results_pg)
+        imp_only = map((c) -> c[1:min(10, length(c))], imp_only)
+        pg_only = map((c) -> c[1:min(10, length(c))], pg_only)
+        @test imp_only == pg_only # ie both empty - but @test will print both otherwise
+      end
     end
   end
 end
