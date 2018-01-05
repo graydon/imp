@@ -32,7 +32,7 @@ using Imp.Compiler
       :poly1,
       [],
       SumProduct(
-        Ring{Int64}(+,*,1,0),
+        Ring{Int64}(+,*,1,0,nothing),
         [
           FunCall(:xx, Any, [:i, :x]),
           FunCall(:yy, Any, [:i, :y]),
@@ -55,7 +55,7 @@ using Imp.Compiler
       :poly2,
       [],
       SumProduct(
-        Ring{Int64}(+,*,1,0),
+        Ring{Int64}(+,*,1,0,nothing),
         [
           FunCall(:xx, Any, [:x, :x]),
           FunCall(:yy, Any, [:x, :y]),
@@ -78,7 +78,7 @@ using Imp.Compiler
         :poly3,
         [],
         SumProduct(
-          Ring{Int64}(+,*,1,0),
+          Ring{Int64}(+,*,1,0,nothing),
           [
             FunCall(:xx, Any, [:i, :x]),
             FunCall(:yy, Any, [:i, :y]),
@@ -104,7 +104,7 @@ using Imp.Compiler
         :poly4,
         [:i],
         SumProduct(
-          Ring{Int64}(+,*,1,0),
+          Ring{Int64}(+,*,1,0,nothing),
           [
             FunCall(:xx, Any, [:i, :x]),
             FunCall(:yy, Any, [:i, :y]),
@@ -135,7 +135,7 @@ using Imp.Compiler
         :poly4,
         [:i],
         SumProduct(
-          Ring{Int64}(+,*,1,0),
+          Ring{Int64}(+,*,1,0,nothing),
           [
             FunCall(:xx, Any, [:i, :x]),
             FunCall(:yy, Any, [:i, :y]),
@@ -166,7 +166,7 @@ using Imp.Compiler
         :poly3,
         [],
         SumProduct(
-          Ring{Int64}(+,*,1,0),
+          Ring{Int64}(+,*,1,0,nothing),
           [
             FunCall(:xx, Any, [:i, :x]),
             FunCall(:yy, Any, [:i, :y]),

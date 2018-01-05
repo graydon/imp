@@ -80,7 +80,7 @@ end
 
 function parse_query(body, mod::Module) ::Lambda
   # just use bool ring
-  ring = Ring(|, &, true, false)
+  ring = Ring(|, &, true, false, true)
   value = [Constant(true)]
   
   # either a multi-line or single-line query

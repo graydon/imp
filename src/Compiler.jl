@@ -9,14 +9,15 @@ using Imp.Data
 
 # --- ast ---
 
-struct Ring{T}
+mutable struct Ring{T}
   add::Function
   mult::Function
   one::T
   zero::T
+  max
 end
 
-const count_ring = Ring(+, *, 1, 0)
+const count_ring = Ring(+, *, 1, 0, nothing)
 
 struct Constant
   value::Any
@@ -34,7 +35,7 @@ struct IndexCall
   args::Vector{Symbol}
 end
 
-struct SumProduct
+mutable struct SumProduct
   ring::Ring
   domain::Vector{Union{FunCall, IndexCall}}
   value::Vector{Union{Symbol, FunCall, Constant}}
@@ -247,7 +248,9 @@ function iter(::Type{Relation{T}}, index::Symbol, args::Vector{Symbol}, var::Sym
         $(esc(index)).his[$column+1] = $(esc(index)).los[$column]
         seek($(esc(index)), $(Val{column}), $(esc(var)))
       end),)
-        $(esc(inline(f, var)))
+        if !$(esc(inline(f, var)))
+          break
+        end
       end
     end
   end
@@ -388,6 +391,7 @@ macro sum(ring::Ring, call::Union{FunCall, IndexCall}, var, f)
     result = $(ring.zero)
     @iter($call, $(esc(var)), ($(esc(value))) -> begin
       result = $(ring.add)(result, $(esc(inline(f, value))))
+      result != $(ring.max)
     end)
     result
   end
@@ -580,6 +584,13 @@ function relationalize(program::Program, args::Vector{Symbol}, vars::Vector{Symb
     old_fun.name = name
   end 
   insert!(funs, insert_point+1, new_fun) 
+  
+  # make sure nothing above the insert returns early
+  for fun in funs[insert_point+2:end]
+    ring = deepcopy(fun.body.ring)
+    ring.max = nothing
+    fun.body.ring = ring
+  end
         
   # finish with a Return
   old_fun = funs[end]
