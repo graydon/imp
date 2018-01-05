@@ -1930,7 +1930,7 @@ function q24a()
     @when keyword in keywords
     title.title(t, title)
     movie_companies.movie(mc, t)
-    movie_companies.company(mc, cn)    
+    movie_companies.company(mc, cn)
     company_name.country_code(cn, "[us]")
     movie_info.movie(mi, t)
     movie_info.info_type(mi, it)
