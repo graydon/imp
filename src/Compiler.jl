@@ -79,9 +79,9 @@ end
 # --- better IR rendering in Juno
 
 if isdefined(Main, :Juno)
-  head(ir::Constant) = repr(ir.value)
-  head(ir::Function) = string(ir)
+  head(ir) = repr(ir)
   head(ir::Symbol) = string(ir)
+  head(ir::Constant) = repr(ir.value)
   head(ir::Union{FunCall, IndexCall}) = "$(head(ir.name))($(join(ir.args, ", ")))"
   head(ir::SumProduct) = "+= $(join(map(head, ir.value), " * ")) <- $(join(map(head, ir.domain), ", "))"
   head(ir::Insert) = "= $(head(ir.value)); $(ir.result_name) += ($(join(map(head, ir.args), ", ")))"
