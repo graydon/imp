@@ -186,6 +186,10 @@ function gallop{T}(column::AbstractArray{T}, lo::Int64, hi::Int64, value::T, thr
   lo
 end
 
+function gallop{T1, T2}(column::AbstractArray{T1}, lo::Int64, hi::Int64, value::T2, threshold::Int64) ::Int64
+  gallop(column, lo, hi, convert(T1, value), threshold)
+end
+
 function next(index::RelationIndex, ::Type{Val{C}}) where {C}
   column = index.columns[C]
   prev_hi = index.his[C]
