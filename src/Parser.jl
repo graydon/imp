@@ -116,7 +116,7 @@ macro query(body)
       typeof(eval(mod, fun)) 
     catch _ 
       println("Warning - guessing type of $fun")
-      Relation{Tuple{Vector{Any}}}
+      Relation{Tuple{Vector{String}}}
     end)
   names = filter((name) -> !isa(name, Function), map((call) -> call.name, parsed.body.domain))
   :($compiled(Dict($(@splice name in names :($(Expr(:quote, name)) => $(esc(name)))))))
