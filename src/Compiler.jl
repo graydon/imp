@@ -352,9 +352,9 @@ end
 
 macro state(env, state::Result, fun_type::Function)
   quote
-    const $(esc(state.name)) = Relation(($(@splice typ in state.typs quote
+    const $(esc(state.name)) = ($(@splice typ in state.typs quote
       $typ[]
-    end),))
+    end),)
   end
 end
 
@@ -434,10 +434,10 @@ macro body(args::Vector{Symbol}, body::Insert)
     value = $value
     if value != $(body.ring.zero)
       $(@splice (arg_num,arg) in enumerate(body.args) quote
-        push!($(esc(body.result_name)).columns[$arg_num], $(esc(arg)))
+        push!($(esc(body.result_name))[$arg_num], $(esc(arg)))
       end)
     end
-    push!($(esc(body.result_name)).columns[end], value)
+    push!($(esc(body.result_name))[end], value)
     value
   end
 end
@@ -453,7 +453,7 @@ end
 macro fun(fun::Return)
   quote
     ($(esc(fun.value.name)))($(map(esc, fun.value.args)...),)
-    const $(esc(fun.name)) = $(esc(fun.result_name))
+    const $(esc(fun.name)) = Relation($(esc(fun.result_name)))
     # TODO reduce result
   end
 end
