@@ -11,8 +11,10 @@ function parse_when(expr, mod::Module) ::FunCall
   walk(expr) = @match expr begin
     _::Symbol => push!(args, expr)
     Expr(:call, [head, exprs...], _) => walk(exprs)
+    Expr(:macrocall, [head, exprs...], _) => walk(exprs)
     Expr(:(&&), exprs, _) => walk(exprs)
     Expr(:(||), exprs, _) => walk(exprs)
+    Expr(:comparison, exprs, _) => walk(exprs)
     Expr(_, _, _) => error("Unknown @when syntax: $expr $(typeof(expr))")
     _::AbstractArray => foreach(walk, expr)
     _ => () # some constant
@@ -50,6 +52,7 @@ function parse_call(exprs, mod::Module) ::FunCall
     @match expr begin
       _::Symbol => expr
       _::Union{Number, String} => Constant(expr)
+      Expr(:call, _, _) => Constant(expr)
       _ => error("Unknown call arg syntax: $expr")
     end
   end
@@ -88,6 +91,7 @@ function parse_query(body, mod::Module) ::Lambda
       end
       Expr(:return, exprs, _) => append!(args, parse_return(exprs, mod))
       Expr(:call, exprs, _) => push!(domain, parse_call(exprs, mod))
+      Expr(:(=), exprs, _) => push!(domain, parse_call(vcat([identity], exprs), mod))
       Expr(:line, _, _) => ()
       _ => error("Unknown query line syntax: $line")
     end
@@ -97,8 +101,13 @@ function parse_query(body, mod::Module) ::Lambda
 end
 
 macro query(body)
-  parse_query(body, current_module())
+  parsed = parse_query(body, current_module())
+  :(compile_relation($parsed, (fun) -> typeof(eval(fun))))
 end
+
+export @query
+
+:(2006 < x < 1).head
 
 using JobData
 
@@ -122,7 +131,11 @@ p = compile_relation(q, fun_type)
 
 names = filter((name) -> !isa(name, Function), map((call) -> call.name, q.body.domain))
 env = Dict((name => eval(name) for name in names))
-@code_warntype p(env)
+@code_warntype 
+
+using BenchmarkTools
+@time p(env)
+@benchmark p(env)
 
 t = Data.index(env[:(info_type.info)], [2,1])
 i1 = Compiler.RelationIndex((t[2], t[1]))
