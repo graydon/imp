@@ -2,6 +2,7 @@ module Compiler
 
 using Base.Cartesian
 using Match
+using Compat
 
 using Imp.Util
 using Imp.Data
