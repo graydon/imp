@@ -15,7 +15,7 @@ function parse_when(expr, mod::Module) ::FunCall
     Expr(:macrocall, [head, exprs...], _) => walk(exprs)
     Expr(:(&&), exprs, _) => walk(exprs)
     Expr(:(||), exprs, _) => walk(exprs)
-    Expr(:comparison, exprs, _) => walk(exprs)
+    Expr(:comparison, [a, _, b, _, c], _) => walk([a,b,c])
     Expr(_, _, _) => error("Unknown @when syntax: $expr $(typeof(expr))")
     _::AbstractArray => foreach(walk, expr)
     _ => () # some constant
