@@ -2886,7 +2886,7 @@ end
 
 function test(qs = query_names())
   for query_name in qs
-    results_imp = eval(Symbol("q$(query_name)"))()
+    @test_nowarn results_imp = eval(Symbol("q$(query_name)"))()
     query = rstrip(readline("../job/$(query_name).sql"))
     query = query[1:(length(query)-1)] # drop ';' at end
     query = replace(query, "MIN", "")
