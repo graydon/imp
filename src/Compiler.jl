@@ -678,6 +678,10 @@ function Base.getindex(compiled::Compiled, key::Symbol)
   end
 end
 
+function Base.show(io::IO, compiled::Compiled)
+  print(io, "Compiled($(repr(compiled.fun)), ...)")
+end
+
 function compile_function(lambda::Lambda, fun_type::Function)
   meta = Pair{Symbol, Any}[]
   push!(meta, :input => deepcopy(lambda)) 
