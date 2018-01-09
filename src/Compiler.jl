@@ -436,8 +436,8 @@ macro body(args::Vector{Symbol}, body::Insert)
       $(@splice (arg_num,arg) in enumerate(body.args) quote
         push!($(esc(body.result_name))[$arg_num], $(esc(arg)))
       end)
+      push!($(esc(body.result_name))[end], value)
     end
-    push!($(esc(body.result_name))[end], value)
     value
   end
 end
