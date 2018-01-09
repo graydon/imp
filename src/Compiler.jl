@@ -660,38 +660,76 @@ function infer_var_types(lambda::Lambda, fun_type::Function, vars::Vector{Symbol
   return error("Type inference failed to reach fixpoint after $inference_fixpoint_limit iterations")
 end
 
+struct Compiled{T}
+  fun::T
+  meta::Vector{Pair{Symbol, Any}}
+end
+
+(compiled::Compiled)(args...) = compiled.fun(args...)
+
+function Base.getindex(compiled::Compiled, key::Symbol) 
+  ix = findfirst(compiled.meta) do pair
+    pair[1] == key
+  end
+  if ix == 0
+    throw(KeyError(key))
+  else
+    compiled.meta[ix][2]
+  end
+end
+
 function compile_function(lambda::Lambda, fun_type::Function)
+  meta = Pair{Symbol, Any}[]
+  push!(meta, :input => deepcopy(lambda)) 
   lambda = lower_constants(lambda)
+  push!(meta, :lower_constants => deepcopy(lambda)) 
   vars = order_vars(lambda)
+  push!(meta, :order_vars => deepcopy(vars)) 
   raw_var_type = infer_var_types(lambda, fun_type, vars)
   var_type = (var) -> raw_var_type[var]
+  push!(meta, :infer_var_types => deepcopy(raw_var_type)) 
   lambda = functionalize(lambda)
+  push!(meta, :functionalize => deepcopy(lambda)) 
   program = Program([], [lambda])
   program = insert_indexes(program, vars, fun_type)
+  push!(meta, :insert_indexes => deepcopy(program)) 
   program = factorize(program, vars)
+  push!(meta, :factorize => deepcopy(program)) 
   code = macroexpand(Compiler, quote
     @Compiler.program($program, $fun_type)
   end)
-  # @render simplify_expr(code)
-  eval(code)
+  push!(meta, :code => code)
+  push!(meta, :simplify_expr => simplify_expr(code)) 
+  fun = eval(code)
+  Compiled(fun, meta)
 end
 
 function compile_relation(lambda::Lambda, fun_type::Function)
+  meta = Pair{Symbol, Any}[]
+  push!(meta, :input => deepcopy(lambda)) 
   lambda = lower_constants(lambda)
+  push!(meta, :lower_constants => deepcopy(lambda)) 
   vars = order_vars(lambda)
+  push!(meta, :order_vars => deepcopy(vars)) 
   raw_var_type = infer_var_types(lambda, fun_type, vars)
   var_type = (var) -> raw_var_type[var]
+  push!(meta, :infer_var_types => deepcopy(raw_var_type)) 
   args = lambda.args
   lambda = Lambda(lambda.name, Symbol[], lambda.body)
   program = Program([], [lambda])
   program = insert_indexes(program, vars, fun_type)
+  push!(meta, :insert_indexes => deepcopy(program)) 
   program = factorize(program, vars)
+  push!(meta, :factorize => deepcopy(program)) 
   program = relationalize(program, args, vars, var_type)
+  push!(meta, :relationalize => deepcopy(program))
   code = macroexpand(Compiler, quote
     @Compiler.program($program, $fun_type)
   end)
-  # @render simplify_expr(code)
-  eval(code)
+  push!(meta, :code => code)
+  push!(meta, :simplify_expr => simplify_expr(code)) 
+  fun = eval(code)
+  Compiled(fun, meta)
 end
 
 export FunCall, Constant, Ring, SumProduct, Lambda, compile_relation, compile_function
