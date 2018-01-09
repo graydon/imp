@@ -58,7 +58,7 @@ function parse_call(exprs, mod::Module) ::FunCall
   else 
     args = map(exprs[2:end]) do expr
       @match expr begin
-        _::Symbol => expr
+        _::Symbol => expr == :(_) ? gensym(:(_)) : expr
         _::Union{Number, String} => Constant(expr)
         Expr(:call, _, _) => Constant(expr)
         _ => error("Unknown call arg syntax: $expr")
