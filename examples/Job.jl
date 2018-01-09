@@ -13,10 +13,10 @@ macro query_not(clause)
   quote 
     exists = @query begin 
       exists = true
-      $clause
+      $(esc(clause))
       return (exists::Bool,)
     end
-    length(exists[1]) == 0
+    length(exists.columns[1]) == 0
   end
 end
 
