@@ -103,7 +103,7 @@ function parse_query(body, mod::Module) ::Lambda
       end
       Expr(:return, exprs, _) => append!(args, parse_return(exprs, mod))
       Expr(:call, exprs, _) => push!(domain, parse_call(exprs, mod))
-      Expr(:(=), exprs, _) => push!(domain, parse_call(vcat([identity], exprs), mod))
+      Expr(:(=), [var, value], _) => push!(domain, parse_call([identity, value, var], mod))
       Expr(:line, _, _) => ()
       _ => error("Unknown query line syntax: $line")
     end
