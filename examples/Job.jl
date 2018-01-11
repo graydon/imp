@@ -2998,6 +2998,4 @@ function bench_pg(qs = query_names())
   medians
 end
 
-test()
-
 end
