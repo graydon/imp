@@ -549,13 +549,13 @@ function functionalize(lambda::Lambda) ::Lambda
   Lambda(lambda.name, args, SumProduct(lambda.body.ring, domain, lambda.body.value))
 end
 
-function relationalize(program::Program, args::Vector{Symbol}, vars::Vector{Symbol}, var_type::Function) ::Program
+function relationalize(program::Program, args::Vector{Symbol}, vars::Vector{Symbol}, var_type::Dict{Symbol, Type}) ::Program
   states = copy(program.states)
   funs = copy(program.funs) # TODO we mutate the funs - need to deepcopy :(
   
   # initialize a relation
   result_name = gensym("result")
-  arg_types = map(var_type, args)
+  arg_types = map((arg) -> var_type[arg], args)
   push!(arg_types, eltype(funs[1].body.ring))
   result = Result(result_name, arg_types)
   push!(states, result)
@@ -696,9 +696,8 @@ function compile_function(lambda::Lambda)
   push!(meta, :lower_constants => deepcopy(lambda)) 
   vars = order_vars(lambda)
   push!(meta, :order_vars => deepcopy(vars)) 
-  raw_var_type = infer_var_types(lambda, vars)
-  var_type = (var) -> raw_var_type[var]
-  push!(meta, :infer_var_types => deepcopy(raw_var_type)) 
+  var_type = infer_var_types(lambda, vars)
+  push!(meta, :infer_var_types => deepcopy(var_type)) 
   lambda = functionalize(lambda)
   push!(meta, :functionalize => deepcopy(lambda)) 
   program = Program([], [lambda])
@@ -722,9 +721,8 @@ function compile_relation(lambda::Lambda)
   push!(meta, :lower_constants => deepcopy(lambda)) 
   vars = order_vars(lambda)
   push!(meta, :order_vars => deepcopy(vars)) 
-  raw_var_type = infer_var_types(lambda, vars)
-  var_type = (var) -> raw_var_type[var]
-  push!(meta, :infer_var_types => deepcopy(raw_var_type)) 
+  var_type = infer_var_types(lambda, vars)
+  push!(meta, :infer_var_types => deepcopy(var_type)) 
   args = lambda.args
   lambda = Lambda(lambda.name, Symbol[], lambda.body)
   program = Program([], [lambda])
