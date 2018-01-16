@@ -17,7 +17,7 @@ mutable struct Ring{T}
   max
 end
 
-const count_ring = Ring(+, *, 1, 0, nothing)
+Base.eltype(ring::Ring{T}) where {T} = T
 
 struct Constant
   value::Any
@@ -137,8 +137,6 @@ end
 function simplify_expr(other)
   other
 end
-
-Base.eltype(ring::Ring{T}) where {T} = T
 
 function inline(function_expr::Expr, value)
   @match function_expr begin
