@@ -135,6 +135,6 @@ macro query(body)
   :($compiled(Dict($(@splice (name, expr) in init :($(Expr(:quote, name)) => $(esc(expr)))))))
 end
 
-export @query, column
+export @query
 
 end
