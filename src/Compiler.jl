@@ -24,7 +24,7 @@ struct Constant
 end
 
 struct FunCall
-  name::Union{Symbol, Function, Expr} # TODO Expr is a temporary hack to get parsing working
+  name::Union{Symbol, Function}
   typ::Type
   args::Vector{Union{Symbol, FunCall, Constant}}
 end
@@ -67,7 +67,7 @@ end
 struct Index
   name::Symbol
   typ::Type
-  fun::Union{Symbol, Function, Expr} # TODO Expr is a temporary hack to get parsing working
+  fun::Union{Symbol, Function}
   permutation::Vector{Int64}
 end
 

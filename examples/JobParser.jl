@@ -52,38 +52,41 @@ function parse_return(exprs, mod::Module) ::Vector{Symbol}
   vars
 end
 
-function parse_call(exprs, mod::Module) ::FunCall
+function parse_in(var, set, init, mod::Module) ::FunCall
+  sym = gensym("fun")
+  init[sym] = :(Relation((collect($set),), 1))
+  # `x in xs` is only ever used with string columns 
+  FunCall(sym, Relation{Tuple{Vector{String}}}, [var])
+end
+
+function parse_call(exprs, init, mod::Module) ::FunCall
   name = exprs[1]
-  if name == :in
-    var = exprs[2]
-    name = exprs[3]
-    @assert isa(var, Symbol)
-    # `x in xs` is only ever used with string columns 
-    FunCall(:(Relation((collect($name),), 1)), Relation{Tuple{Vector{String}}}, [var])
-  else 
-    args = map(exprs[2:end]) do expr
-      @match expr begin
-        _::Symbol => expr == :(_) ? gensym(:(_)) : expr
-        _::Union{Number, String} => Constant(expr)
-        Expr(:call, _, _) => Constant(expr)
-        _ => error("Unknown call arg syntax: $expr")
-      end
+  args = map(exprs[2:end]) do expr
+    @match expr begin
+      _::Symbol => expr == :(_) ? gensym(:(_)) : expr
+      _::Union{Number, String} => Constant(expr)
+      Expr(:call, _, _) => Constant(expr)
+      _ => error("Unknown call arg syntax: $expr")
     end
-    fun = try
-      eval(mod, name)
-    catch _
-      error("Fun is not defined: $name")
-    end
-    # TODO need to avoid differing representations here
-    if isa(fun, Function)
-      FunCall(fun, typeof(fun), args)
-    else
-      FunCall(name, typeof(fun), args)
-    end
+  end
+  fun = try
+    eval(mod, name)
+  catch _
+    error("Fun is not defined: $name")
+  end
+  # TODO need to avoid differing representations here
+  if isa(fun, Function)
+    FunCall(fun, typeof(fun), args)
+  else
+    sym = gensym("fun")
+    init[sym] = name
+    FunCall(sym, typeof(fun), args)
   end
 end
 
-function parse_query(body, mod::Module) ::Lambda
+function parse_query(body, mod::Module) ::Tuple{Dict{Symbol, Expr}, Lambda}
+  init = Dict{Symbol, Expr}()
+  
   # just use bool ring
   ring = Ring(|, &, true, false, true)
   value = [Constant(true)]
@@ -101,36 +104,37 @@ function parse_query(body, mod::Module) ::Lambda
     @match line begin
       Expr(:macrocall, [head, expr], _) => @match head begin
         Symbol("@when") => @match expr begin
-          Expr(:call, [:in, var, set], _) => push!(domain, parse_call([:in, var, set], mod))
+          Expr(:call, [:in, var, set], _) => push!(domain, parse_in(var, set, init, mod))
           _ => push!(domain, parse_when(expr, mod))
         end
         _ => error("Unknown macro: $head")
       end
       Expr(:return, exprs, _) => append!(args, parse_return(exprs, mod))
-      Expr(:call, exprs, _) => push!(domain, parse_call(exprs, mod))
-      Expr(:(=), [var, value], _) => push!(domain, parse_call([identity, value, var], mod))
+      Expr(:call, [:in, var, set], _) => push!(domain, parse_in(var, set, init, mod))
+      Expr(:call, exprs, _) => push!(domain, parse_call(exprs, init, mod))
+      Expr(:(=), [var, value], _) => push!(domain, parse_call([identity, value, var], init, mod))
       Expr(:line, _, _) => ()
       _ => error("Unknown query line syntax: $line")
     end
   end
   
-  Lambda(gensym("query"), args, SumProduct(ring, domain, value))
+  (init, Lambda(gensym("query"), args, SumProduct(ring, domain, value)))
 end
 
 macro query(body)
   mod = current_module()
-  parsed = parse_query(body, mod)
-  compiled = compile_relation(parsed, (fun) -> 
-    try 
-      typeof(eval(mod, fun)) 
-    catch _ 
-      println("Warning - guessing type of $fun")
-      Relation{Tuple{Vector{String}}}
-    end)
-  names = filter((name) -> !isa(name, Function), map((call) -> call.name, parsed.body.domain))
-  :($compiled(Dict($(@splice name in names :($(Expr(:quote, name)) => $(esc(name)))))))
+  init, parsed = parse_query(body, mod)
+  compiled = compile_relation(parsed)
+  for call in parsed.body.domain
+    if isa(call.name, Symbol)
+      if !haskey(init, call.name)
+        init[call.name] = call.name
+      end
+    end
+  end
+  :($compiled(Dict($(@splice (name, expr) in init :($(Expr(:quote, name)) => $(esc(expr)))))))
 end
 
-export @query
+export @query, column
 
 end

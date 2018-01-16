@@ -2,7 +2,6 @@ module Job
 
 using Imp.Data
 using Imp.Compiler
-using Imp.Parser
 
 using JobData
 using JobParser
@@ -2878,7 +2877,7 @@ function query_names(nums=1:33)
   for num in nums
     for char in "abcdef"
       query_name = "$num$char"
-      if isdefined(Symbol("q$query_name"))
+      if isdefined(Job, Symbol("q$query_name"))
         push!(query_names, query_name)
       end
     end
@@ -2889,7 +2888,7 @@ end
 function test(qs = query_names())
   @testset "queries" begin
     @testset "query $query_name" for query_name in qs
-      results_imp = @test_nowarn eval(Symbol("q$(query_name)"))()
+      results_imp = @test_nowarn eval(Job, Symbol("q$(query_name)"))()
       columns = [eltype(c) == Int16 ? convert(Vector{Int64}, c) : c for c in results_imp.columns]
       results_imp = Relation(tuple(columns[1:end-1]...), results_imp.num_keys)
       query = rstrip(readline("../job/$(query_name).sql"))
@@ -2918,7 +2917,7 @@ end
 #   SQLite.execute!(db, "PRAGMA cache_size = -1000000000;")
 #   SQLite.execute!(db, "PRAGMA temp_store = memory;")
 #   for query_name in qs
-#     results_imp = eval(Symbol("q$(query_name)"))()
+#     results_imp = eval(Job, Symbol("q$(query_name)"))()
 #     query = rstrip(readline("../job/$(query_name).sql"))
 #     query = query[1:(length(query)-1)] # drop ';' at end
 #     query = replace(query, "MIN", "")
@@ -2948,8 +2947,8 @@ function bench_imp(qs = query_names())
   medians = []
   for query_name in qs
     @show query_name now()
-    eval(Symbol("q$(query_name)"))()
-    trial = @show @benchmark $(eval(Symbol("q$(query_name)")))() evals=3
+    eval(Job, Symbol("q$(query_name)"))()
+    trial = @show @benchmark $(eval(Job, Symbol("q$(query_name)")))() evals=3
     push!(medians, median(trial.times) / 1000000)
   end
   medians
