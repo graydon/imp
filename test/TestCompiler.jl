@@ -12,18 +12,6 @@ using Imp.Compiler
   const yy = Relation((collect(0:100), collect(reverse(0:100))))
   inputs = Dict(:xx => xx, :yy => yy, :zz => zz)
   
-  function fun_type(fun) 
-    if fun == :xx
-      typeof(xx)
-    elseif fun == :yy
-      typeof(yy)
-    elseif isa(fun, Function)
-      typeof(fun)
-    else
-      error()
-    end
-  end
-  
   expected = sum(((x * x) + (y * y) + (3 * x * y) for (x,y) in zip(xx.columns[2], yy.columns[2])))
   
   @testset "poly1" begin 
@@ -34,15 +22,15 @@ using Imp.Compiler
       SumProduct(
         Ring{Int64}(+,*,1,0,nothing),
         [
-          FunCall(:xx, Any, [:i, :x]),
-          FunCall(:yy, Any, [:i, :y]),
-          FunCall(zz, Any, [:x, :y, :z]),
+          FunCall(:xx, typeof(xx), [:i, :x]),
+          FunCall(:yy, typeof(yy), [:i, :y]),
+          FunCall(zz, [:x, :y, :z]),
         ],
         [:z]
       )
     )  
     
-    p1 = compile_function(polynomial_ast1, fun_type)
+    p1 = compile_function(polynomial_ast1)
     j1 = p1(inputs)
     @inferred j1()
     @test j1() == expected
@@ -57,15 +45,15 @@ using Imp.Compiler
       SumProduct(
         Ring{Int64}(+,*,1,0,nothing),
         [
-          FunCall(:xx, Any, [:x, :x]),
-          FunCall(:yy, Any, [:x, :y]),
-          FunCall(zz, Any, [:x, :y, :z]),
+          FunCall(:xx, typeof(xx), [:x, :x]),
+          FunCall(:yy, typeof(yy), [:x, :y]),
+          FunCall(zz, [:x, :y, :z]),
         ],
         [:z]
       )
     )
     
-    p2 = compile_function(polynomial_ast2, fun_type)  
+    p2 = compile_function(polynomial_ast2)  
     j2 = p2(inputs)
     @inferred j2()
     @test j2() == expected
@@ -80,18 +68,18 @@ using Imp.Compiler
         SumProduct(
           Ring{Int64}(+,*,1,0,nothing),
           [
-            FunCall(:xx, Any, [:i, :x]),
-            FunCall(:yy, Any, [:i, :y]),
-            FunCall(*, Any, [:x, :x, :t1]),
-            FunCall(*, Any, [:y, :y, :t2]),
-            FunCall(*, Any, [Constant(3), :x, :y, :t3]),
-            FunCall(+, Any, [:t1, :t2, :t3, :z])
+            FunCall(:xx, typeof(xx), [:i, :x]),
+            FunCall(:yy, typeof(yy), [:i, :y]),
+            FunCall(*, [:x, :x, :t1]),
+            FunCall(*, [:y, :y, :t2]),
+            FunCall(*, [Constant(3), :x, :y, :t3]),
+            FunCall(+, [:t1, :t2, :t3, :z])
           ],
           [:z]
         )
     )
     
-    p3 = compile_function(polynomial_ast3, fun_type)
+    p3 = compile_function(polynomial_ast3)
     j3 = p3(inputs)
     @inferred j3()
     @test j3() == expected
@@ -106,18 +94,18 @@ using Imp.Compiler
         SumProduct(
           Ring{Int64}(+,*,1,0,nothing),
           [
-            FunCall(:xx, Any, [:i, :x]),
-            FunCall(:yy, Any, [:i, :y]),
-            FunCall(*, Any, [:x, :x, :t1]),
-            FunCall(*, Any, [:y, :y, :t2]),
-            FunCall(*, Any, [Constant(3), :x, :y, :t3]),
-            FunCall(+, Any, [:t1, :t2, :t3, :z])
+            FunCall(:xx, typeof(xx), [:i, :x]),
+            FunCall(:yy, typeof(yy), [:i, :y]),
+            FunCall(*, [:x, :x, :t1]),
+            FunCall(*, [:y, :y, :t2]),
+            FunCall(*, [Constant(3), :x, :y, :t3]),
+            FunCall(+, [:t1, :t2, :t3, :z])
           ],
           [:z]
         )
     )
 
-    p4 = compile_function(polynomial_ast4, fun_type)
+    p4 = compile_function(polynomial_ast4)
     @inferred p4(inputs)
     j4 = p4(inputs)
     @inferred j4(1)
@@ -137,18 +125,18 @@ using Imp.Compiler
         SumProduct(
           Ring{Int64}(+,*,1,0,nothing),
           [
-            FunCall(:xx, Any, [:i, :x]),
-            FunCall(:yy, Any, [:i, :y]),
-            FunCall(*, Any, [:x, :x, :t1]),
-            FunCall(*, Any, [:y, :y, :t2]),
-            FunCall(*, Any, [Constant(3), :x, :y, :t3]),
-            FunCall(+, Any, [:t1, :t2, :t3, :z])
+            FunCall(:xx, typeof(xx), [:i, :x]),
+            FunCall(:yy, typeof(yy), [:i, :y]),
+            FunCall(*, [:x, :x, :t1]),
+            FunCall(*, [:y, :y, :t2]),
+            FunCall(*, [Constant(3), :x, :y, :t3]),
+            FunCall(+, [:t1, :t2, :t3, :z])
           ],
           [:z]
         )
     )
   
-    p5 = compile_relation(polynomial_ast5, fun_type)
+    p5 = compile_relation(polynomial_ast5)
     @inferred p5(inputs)
     j5 = p5(inputs)
     for x in 0:100
@@ -168,18 +156,18 @@ using Imp.Compiler
         SumProduct(
           Ring{Int64}(+,*,1,0,nothing),
           [
-            FunCall(:xx, Any, [:i, :x]),
-            FunCall(:yy, Any, [:i, :y]),
-            FunCall(*, Any, [:x, :x, :t1]),
-            FunCall(*, Any, [:y, :y, :t2]),
-            FunCall(*, Any, [Constant(3), :x, :y, :t3]),
-            FunCall(+, Any, [:t1, :t2, :t3, :z])
+            FunCall(:xx, typeof(xx), [:i, :x]),
+            FunCall(:yy, typeof(yy), [:i, :y]),
+            FunCall(*, [:x, :x, :t1]),
+            FunCall(*, [:y, :y, :t2]),
+            FunCall(*, [Constant(3), :x, :y, :t3]),
+            FunCall(+, [:t1, :t2, :t3, :z])
           ],
           [:z]
         )
     )
     
-    p6 = compile_relation(polynomial_ast6, fun_type)
+    p6 = compile_relation(polynomial_ast6)
     @inferred p6(inputs)
     j6 = p6(inputs)
     @test j6.columns[1][1] == expected
@@ -193,36 +181,24 @@ end
 # const big_yy = Relation((collect(0:1000000), collect(reverse(0:1000000))))
 # big_inputs = Dict(:xx => big_xx, :yy => big_yy, :zz => zz)
 # 
-# function fun_type(fun) 
-#   if fun == :xx
-#     typeof(big_xx)
-#   elseif fun == :yy
-#     typeof(big_yy)
-#   elseif isa(fun, Function)
-#     typeof(fun)
-#   else
-#     error()
-#   end
-# end
-# 
 # polynomial_ast5 = Lambda(
 #     :poly4,
 #     [:i],
 #     SumProduct(
 #       Ring{Int64}(+,*,1,0,nothing),
 #       [
-#         FunCall(:xx, Any, [:i, :x]),
-#         FunCall(:yy, Any, [:i, :y]),
-#         FunCall(*, Any, [:x, :x, :t1]),
-#         FunCall(*, Any, [:y, :y, :t2]),
-#         FunCall(*, Any, [Constant(3), :x, :y, :t3]),
-#         FunCall(+, Any, [:t1, :t2, :t3, :z])
+#         FunCall(:xx, typeof(xx), [:i, :x]),
+#         FunCall(:yy, typeof(yy), [:i, :y]),
+#         FunCall(*, [:x, :x, :t1]),
+#         FunCall(*, [:y, :y, :t2]),
+#         FunCall(*, [Constant(3), :x, :y, :t3]),
+#         FunCall(+, [:t1, :t2, :t3, :z])
 #       ],
 #       [:z]
 #     )
 # )
 # 
-# p5 = compile_relation(polynomial_ast5, fun_type)
+# p5 = compile_relation(polynomial_ast5)
 # 
 # @show @benchmark p5(big_inputs)
 

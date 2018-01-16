@@ -58,7 +58,8 @@ function parse_call(exprs, mod::Module) ::FunCall
     var = exprs[2]
     name = exprs[3]
     @assert isa(var, Symbol)
-    FunCall(:(Relation((collect($name),), 1)), Relation{Tuple{Vector{Any}}}, [var])
+    # `x in xs` is only ever used with string columns 
+    FunCall(:(Relation((collect($name),), 1)), Relation{Tuple{Vector{String}}}, [var])
   else 
     args = map(exprs[2:end]) do expr
       @match expr begin

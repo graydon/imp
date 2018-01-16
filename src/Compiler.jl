@@ -29,6 +29,10 @@ struct FunCall
   args::Vector{Union{Symbol, FunCall, Constant}}
 end
 
+function FunCall(name::Function, args)
+  FunCall(name, typeof(name), args)
+end
+
 struct IndexCall
   name::Symbol
   typ::Type
@@ -342,15 +346,15 @@ macro iter(call, var, f); iter(call.typ, call.name, convert(Vector{Symbol}, call
 macro prepare(call); prepare(call.typ, call.name, convert(Vector{Symbol}, call.args)); end
 macro contains(call); contains(call.typ, call.name, convert(Vector{Symbol}, call.args)); end
 
-macro state(env, state::Index, fun_type::Function)
+macro state(env, state::Index)
   fun = gensym("fun")
   quote 
-    $(esc(fun))::$(fun_type(state.fun)) = $(esc(env))[$(Expr(:quote, state.fun))]
+    $(esc(fun))::$(state.typ) = $(esc(env))[$(Expr(:quote, state.fun))]
     const $(esc(state.name)) = $(get_index(state.typ, fun, state.permutation))
   end
 end
 
-macro state(env, state::Result, fun_type::Function)
+macro state(env, state::Result)
   quote
     const $(esc(state.name)) = ($(@splice typ in state.typs quote
       $typ[]
@@ -458,11 +462,11 @@ macro fun(fun::Return)
   end
 end
 
-macro program(program::Program, fun_type::Function)
+macro program(program::Program)
   quote
     function setup(env) 
       $(@splice state in program.states quote
-        @state(env, $state, $fun_type)
+        @state(env, $state)
       end)
       $(@splice fun in program.funs quote
         @fun($fun)
@@ -503,30 +507,29 @@ function Compiler.factorize(program::Program, vars::Vector{Symbol}) ::Program
   Program(program.states, reverse(funs)) 
 end
 
-function insert_indexes(program::Program, vars::Vector{Symbol}, fun_type::Function) ::Program
+function insert_indexes(program::Program, vars::Vector{Symbol}) ::Program
   @assert length(program.funs) == 1
   lambda = program.funs[1]
   
   domain = Union{FunCall, IndexCall}[]
   indexes = Index[]
   for call in lambda.body.domain
-    typ = fun_type(call.name)
-    if can_index(typ)
+    if can_index(call.typ)
       # sort args according to variable order
       n = length(call.args)
       permutation = Vector(1:n)
       sort!(permutation, by=(ix) -> findfirst(vars, call.args[ix]))
       name = gensym("index")
-      push!(indexes, Index(name, typ, call.name, permutation))
+      push!(indexes, Index(name, call.typ, call.name, permutation))
       # insert all prefixes of args
       args = call.args[permutation]
       for i in 1:n
         if (i == length(args)) || (args[i] != args[i+1]) # don't emit repeated variables
-          push!(domain, IndexCall(name, typ, args[1:i]))
+          push!(domain, IndexCall(name, call.typ, args[1:i]))
         end
       end
     else
-      push!(domain, FunCall(call.name, typ, call.args))
+      push!(domain, FunCall(call.name, call.typ, call.args))
     end
   end
   
@@ -636,7 +639,7 @@ end
 
 const inference_fixpoint_limit = 100
 
-function infer_var_types(lambda::Lambda, fun_type::Function, vars::Vector{Symbol}) ::Dict{Symbol, Type}
+function infer_var_types(lambda::Lambda, vars::Vector{Symbol}) ::Dict{Symbol, Type}
   var_type = Dict{Symbol, Type}((var => Any for var in vars))
   
   # loop until fixpoint
@@ -644,7 +647,7 @@ function infer_var_types(lambda::Lambda, fun_type::Function, vars::Vector{Symbol
     new_var_type = copy(var_type)
     # infer type for each call in domain
     for call in lambda.body.domain
-      narrowed_types = narrow_types(fun_type(call.name), call.name, Type[var_type[arg] for arg in call.args])
+      narrowed_types = narrow_types(call.typ, call.name, Type[var_type[arg] for arg in call.args])
       for (arg, typ) in zip(call.args, narrowed_types)
         new_var_type[arg] = typeintersect(new_var_type[arg], typ)
       end
@@ -678,29 +681,33 @@ function Base.getindex(compiled::Compiled, key::Symbol)
   end
 end
 
+function Base.repr(compiled::Compiled)
+  "Compiled($(repr(compiled.fun)), ...)"
+end
+
 function Base.show(io::IO, compiled::Compiled)
   print(io, "Compiled($(repr(compiled.fun)), ...)")
 end
 
-function compile_function(lambda::Lambda, fun_type::Function)
+function compile_function(lambda::Lambda)
   meta = Pair{Symbol, Any}[]
   push!(meta, :input => deepcopy(lambda)) 
   lambda = lower_constants(lambda)
   push!(meta, :lower_constants => deepcopy(lambda)) 
   vars = order_vars(lambda)
   push!(meta, :order_vars => deepcopy(vars)) 
-  raw_var_type = infer_var_types(lambda, fun_type, vars)
+  raw_var_type = infer_var_types(lambda, vars)
   var_type = (var) -> raw_var_type[var]
   push!(meta, :infer_var_types => deepcopy(raw_var_type)) 
   lambda = functionalize(lambda)
   push!(meta, :functionalize => deepcopy(lambda)) 
   program = Program([], [lambda])
-  program = insert_indexes(program, vars, fun_type)
+  program = insert_indexes(program, vars)
   push!(meta, :insert_indexes => deepcopy(program)) 
   program = factorize(program, vars)
   push!(meta, :factorize => deepcopy(program)) 
   code = macroexpand(Compiler, quote
-    @Compiler.program($program, $fun_type)
+    @Compiler.program($program)
   end)
   push!(meta, :code => code)
   push!(meta, :simplify_expr => simplify_expr(code)) 
@@ -708,27 +715,27 @@ function compile_function(lambda::Lambda, fun_type::Function)
   Compiled(fun, meta)
 end
 
-function compile_relation(lambda::Lambda, fun_type::Function)
+function compile_relation(lambda::Lambda)
   meta = Pair{Symbol, Any}[]
   push!(meta, :input => deepcopy(lambda)) 
   lambda = lower_constants(lambda)
   push!(meta, :lower_constants => deepcopy(lambda)) 
   vars = order_vars(lambda)
   push!(meta, :order_vars => deepcopy(vars)) 
-  raw_var_type = infer_var_types(lambda, fun_type, vars)
+  raw_var_type = infer_var_types(lambda, vars)
   var_type = (var) -> raw_var_type[var]
   push!(meta, :infer_var_types => deepcopy(raw_var_type)) 
   args = lambda.args
   lambda = Lambda(lambda.name, Symbol[], lambda.body)
   program = Program([], [lambda])
-  program = insert_indexes(program, vars, fun_type)
+  program = insert_indexes(program, vars)
   push!(meta, :insert_indexes => deepcopy(program)) 
   program = factorize(program, vars)
   push!(meta, :factorize => deepcopy(program)) 
   program = relationalize(program, args, vars, var_type)
   push!(meta, :relationalize => deepcopy(program))
   code = macroexpand(Compiler, quote
-    @Compiler.program($program, $fun_type)
+    @Compiler.program($program)
   end)
   push!(meta, :code => code)
   push!(meta, :simplify_expr => simplify_expr(code)) 
