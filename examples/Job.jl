@@ -5,6 +5,8 @@ using Imp.Compiler
 using Imp.Parser
 
 using JobData
+using JobParser
+
 using Base.Test
 using BenchmarkTools
 import DataFrames

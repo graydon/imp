@@ -192,8 +192,38 @@ end
 # const big_xx = Relation((collect(0:1000000),collect(0:1000000)))
 # const big_yy = Relation((collect(0:1000000), collect(reverse(0:1000000))))
 # big_inputs = Dict(:xx => big_xx, :yy => big_yy, :zz => zz)
-# @show @benchmark p1(big_inputs)()
-# @show @benchmark p2(big_inputs)()
-# @show @benchmark p3(big_inputs)()
+# 
+# function fun_type(fun) 
+#   if fun == :xx
+#     typeof(big_xx)
+#   elseif fun == :yy
+#     typeof(big_yy)
+#   elseif isa(fun, Function)
+#     typeof(fun)
+#   else
+#     error()
+#   end
+# end
+# 
+# polynomial_ast5 = Lambda(
+#     :poly4,
+#     [:i],
+#     SumProduct(
+#       Ring{Int64}(+,*,1,0,nothing),
+#       [
+#         FunCall(:xx, Any, [:i, :x]),
+#         FunCall(:yy, Any, [:i, :y]),
+#         FunCall(*, Any, [:x, :x, :t1]),
+#         FunCall(*, Any, [:y, :y, :t2]),
+#         FunCall(*, Any, [Constant(3), :x, :y, :t3]),
+#         FunCall(+, Any, [:t1, :t2, :t3, :z])
+#       ],
+#       [:z]
+#     )
+# )
+# 
+# p5 = compile_relation(polynomial_ast5, fun_type)
+# 
+# @show @benchmark p5(big_inputs)
 
 end

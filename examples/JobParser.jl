@@ -1,4 +1,8 @@
-module Parser
+"""
+Parser for legacy query syntax, to avoid having to rewrite Job.jl
+"""
+
+module JobParser
 
 using Match
 
