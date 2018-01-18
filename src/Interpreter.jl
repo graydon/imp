@@ -8,32 +8,38 @@ using Imp.Compiler
 
 abstract Expr
 
+"Recall an existing binding"
 struct Var <: Expr
   name::Symbol
 end
 
+"Create a new binding"
 struct Let <: Expr
   bindings::Vector{Tuple{Symbol, Expr}}
   body::Expr
 end
 
+"Return all bindings of `vars` that satisfy `domain`"
 struct Multijoin <: Expr
   vars::Vector{Symbol}
   domain::Vector{Tuple{Expr, Vector{Symbol}}}
 end
 
+"Map each unique value of `row[key]` to the first value of `row[val]`" 
 struct OrderedUnion <: Expr
   key::Vector{Int64} # column ix
   val::Vector{Int64}
   sets::Vector{Expr}
 end
 
+"Map each unique value of `row[key]` to the set of values of `row[val]`"
 struct Group <: Expr
   key::Vector{Int64}
   val::Vector{Int64}
   set::Expr
 end
 
+"Run some precompiled function"
 struct Compiled <: Expr
   args::Vector{Symbol}
   f::Function
