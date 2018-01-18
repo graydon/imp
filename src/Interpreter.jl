@@ -1,6 +1,7 @@
 module Interpreter
 
 using Imp.Util
+using Imp.Compiler
 
 # --- expressions ---
 
@@ -32,6 +33,11 @@ struct Group <: Expr
   set::Expr
 end
 
+struct Compiled <: Expr
+  args::Vector{Symbol}
+  f::Function
+end
+
 # --- functions for walking expression tree ---
 
 map_keys(f::Function, pairs) = map((pair) -> f(pair[1]) => pair[2], pairs)
@@ -41,6 +47,7 @@ map_exprs(f::Function, expr::Let) = Let(map_vals(f, expr.bindings), f(expr.body)
 map_exprs(f::Function, expr::Multijoin) = Multijoin(expr.vars, map_keys(f, expr.domain))
 map_exprs(f::Function, expr::Var) = OrderedUnion(expr,key, expr.val, map(f, expr.sets))
 map_exprs(f::Function, expr::Var) = Group(expr.key, expr.val, f(expr.set))
+map_exprs(f::Function, expr::Compiled) = expr
 
 # --- interpreter ---
 
@@ -50,7 +57,7 @@ end
 
 function interpret(env::Dict{Symbol, Set}, expr::Let) ::Set
   env = copy(env)
-  for name, value_expr in expr.bindings
+  for (name, value_expr) in expr.bindings
     env[name] = interpret(value_expr)
   end
   interpret(env, expr.body)
@@ -101,6 +108,34 @@ function interpret(env::Dict{Symbol, Set}, expr::Group) ::Set
   Set((tuple(key..., val) for (key, val) in grouped))
 end
 
+function interpret(env::Dict{Symbol, Set}, expr::Compiled) ::Set
+  # TODO have to convert Set <=> Data.Relation
+  expr.f(Dict((arg => env[arg] for arg in args)))
+end
+
+# --- compiler ---
+
+compile(expr::Expr) = map_exprs(compile, expr)
+
+function compile(expr::Multijoin) ::Expr
+  names = [gensym("arg") for _ in expr.domain]
+  lambda = Lambda(
+    gensym("lambda"),
+    expr.vars,
+    SumProduct(
+      Ring{Bool}(|, &, true, false, nothing),
+      # TODO need types to compile this correctly - or stage via generated function
+      [FunCall(name, Any, domain_vars) for (name, (_, domain_vars)) in zip(names, expr.domain)],
+      [Constant(true)],
+    ),
+  )
+  f = compile_relation(lambda)
+  Let(
+    zip(names, (domain_expr for (domain_expr, _) in expr.domain)),
+    Compiled(args, f),
+  )
+end
+
 # --- examples ---
 
 env = Dict{Symbol, Set}(
@@ -137,5 +172,8 @@ poly = Multijoin(
   )
   
 interpret(env, poly)
+
+# throws up on type inference
+# compile(poly)
 
 end
