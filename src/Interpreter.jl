@@ -38,14 +38,6 @@ function materialize(env::Dict{Symbol, Set}, expr::Let) ::Set
   env[expr.name] = materialize(expr.value)
   materialize(env, expr.body)
 end
-
-function product(sets::Vector{Set})
-  if isempty(sets)
-    ((),)
-  else
-    (tuple(row, rest...) for row in sets[1] for rest in product(sets[2:end]))
-  end
-end
     
 function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Symbol}) ::Union{Dict{Symbol, Any}, Void}
   extended_binding = copy(binding)
