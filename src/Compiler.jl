@@ -661,7 +661,7 @@ function infer_var_types(lambda::Lambda, vars::Vector{Symbol}) ::Dict{Symbol, Ty
   return error("Type inference failed to reach fixpoint after $inference_fixpoint_limit iterations")
 end
 
-struct Compiled{T}
+struct Compiled{T} <: Function where {T <: Function}
   fun::T
   meta::Vector{Pair{Symbol, Any}}
 end
