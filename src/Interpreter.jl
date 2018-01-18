@@ -61,8 +61,7 @@ function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Sym
 end
 
 function extend_bindings(bindings::Vector{Dict{Symbol, Any}}, set::Set, vars::Vector{Symbol}) ::Vector{Dict{Symbol, Any}}
-  extended_bindings = [extend_binding(binding, row, vars) for binding in bindings for row in set]
-  filter((e) -> e != nothing, extended_bindings)
+  collect(filter((e) -> e != nothing, (extend_binding(binding, row, vars) for binding in bindings for row in set)))
 end
 
 function materialize(env::Dict{Symbol, Set}, expr::Multijoin) ::Set
