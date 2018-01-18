@@ -51,8 +51,8 @@ function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Sym
   extended_binding = copy(binding)
   for (col, var) in enumerate(vars)
     if var != :(_)
-      if haskey(binding, var) && (binding[var] != row[col])
-        return nothing
+      if haskey(extended_binding, var) && (extended_binding[var] != row[col])
+        return nothing 
       end
       extended_binding[var] = row[col]
     end
@@ -60,14 +60,12 @@ function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Sym
   extended_binding
 end
 
-function extend_bindings(bindings::Vector{Dict{Symbol, Any}}, set::Set, vars::Vector{Symbol}) ::Vector{Dict{Symbol, Any}}
-  collect(filter((e) -> e != nothing, (extend_binding(binding, row, vars) for binding in bindings for row in set)))
-end
-
 function materialize(env::Dict{Symbol, Set}, expr::Multijoin) ::Set
   bindings = [Dict{Symbol, Any}()]
   for (domain_expr, domain_vars) in expr.domain
-    bindings = extend_bindings(bindings, materialize(env, domain_expr), domain_vars)
+    set = materialize(env, domain_expr)
+    bindings = (extend_binding(binding, row, domain_vars) for binding in bindings for row in set)
+    bindings = filter((e) -> e != nothing, bindings)
   end
   Set(ntuple((i) -> binding[expr.vars[i]], length(expr.vars)) for binding in bindings)
 end
