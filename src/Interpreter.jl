@@ -115,8 +115,6 @@ end
 
 # --- compiler ---
 
-compile(expr::Expr) = map_exprs(compile, expr)
-
 function relation_to_set(relation::Relation) ::Set
   columns = relation.columns[1:end-1] # drop the useless `true` column
   typ = Tuple{(eltype(column) for column in columns)...}
@@ -132,6 +130,8 @@ function set_to_relation(set::Set{T}) ::Relation where {T <: Tuple}
   end
   Relation(columns, length(T.parameters))
 end
+
+compile(expr::Expr) = map_exprs(compile, expr)
 
 function compile(expr::Multijoin) ::Expr
   names = [gensym("arg") for _ in expr.domain]
