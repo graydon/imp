@@ -1,6 +1,7 @@
 module Interpreter
 
 using Imp.Util
+using Imp.Data
 using Imp.Compiler
 
 # --- expressions ---
@@ -58,12 +59,12 @@ end
 function interpret(env::Dict{Symbol, Set}, expr::Let) ::Set
   env = copy(env)
   for (name, value_expr) in expr.bindings
-    env[name] = interpret(value_expr)
+    env[name] = interpret(env, value_expr)
   end
   interpret(env, expr.body)
 end
     
-function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Symbol}) ::Union{Dict{Symbol, Any}, Void}
+function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Symbol}) ::Dict{Symbol, Any} ::Union{Dict{Symbol, Any}, Void}
   extended_binding = copy(binding)
   for (col, var) in enumerate(vars)
     if var != :(_)
@@ -109,42 +110,64 @@ function interpret(env::Dict{Symbol, Set}, expr::Group) ::Set
 end
 
 function interpret(env::Dict{Symbol, Set}, expr::Compiled) ::Set
-  # TODO have to convert Set <=> Data.Relation
-  expr.f(Dict((arg => env[arg] for arg in args)))
+  expr.f(Dict((arg => env[arg] for arg in expr.args)))
 end
 
 # --- compiler ---
 
 compile(expr::Expr) = map_exprs(compile, expr)
 
+function relation_to_set(relation::Relation) ::Set
+  columns = relation.columns[1:end-1] # drop the useless `true` column
+  typ = Tuple{(eltype(column) for column in columns)...}
+  Set{typ}((ntuple((col) -> columns[col][row], length(columns)) for row in 1:length(columns[1])))
+end
+
+function set_to_relation(set::Set{T}) ::Relation where {T <: Tuple} 
+  columns = ntuple((col) -> Vector{T.parameters[col]}(), length(T.parameters))
+  for row in set
+    for col in 1:length(T.parameters)
+      push!(columns[col], row[col])
+    end
+  end
+  Relation(columns, length(T.parameters))
+end
+
 function compile(expr::Multijoin) ::Expr
   names = [gensym("arg") for _ in expr.domain]
-  lambda = Lambda(
-    gensym("lambda"),
-    expr.vars,
-    SumProduct(
-      Ring{Bool}(|, &, true, false, nothing),
-      # TODO need types to compile this correctly - or stage via generated function
-      [FunCall(name, Any, domain_vars) for (name, (_, domain_vars)) in zip(names, expr.domain)],
-      [Constant(true)],
-    ),
-  )
-  f = compile_relation(lambda)
+  # TODO need to figure out type inference or staging to avoid compiling every time
+  function f(env) 
+    compiled_env = map_vals(set_to_relation, env)
+    lambda = Lambda(
+      gensym("lambda"),
+      expr.vars,
+      SumProduct(
+        Ring{Bool}(|, &, true, false, nothing),
+        [FunCall(name, typeof(compiled_env[name]), domain_vars) for (name, (_, domain_vars)) in zip(names, expr.domain)],
+        [Constant(true)],
+      ),
+    )
+    compiled = compile_relation(lambda)
+    result = Base.invokelatest(compiled, compiled_env)
+    relation_to_set(result)
+  end
   Let(
-    zip(names, (domain_expr for (domain_expr, _) in expr.domain)),
-    Compiled(args, f),
+    collect(zip(names, (domain_expr for (domain_expr, _) in expr.domain))),
+    Compiled(names, f),
   )
 end
 
 # --- examples ---
 
 env = Dict{Symbol, Set}(
-  :+ => Set(((a, b, (a + b) % 3) for a in 0:2 for b in 0:2)),
-  :* => Set(((a, b, (a * b) % 3) for a in 0:2 for b in 0:2)),
+  :+ => Set{Tuple{Int64, Int64, Int64}}(((a, b, (a + b) % 3) for a in 0:2 for b in 0:2)),
+  :* => Set{Tuple{Int64, Int64, Int64}}(((a, b, (a * b) % 3) for a in 0:2 for b in 0:2)),
   :two => Set(((2,),)),
   :xx => Set(((i, i) for i in 0:2)),
   :yy => Set(((i, 2 - i) for i in 0:2)),
   )
+  
+interpret(env, Let([(:foo, Var(:xx))], Var(:foo)))
   
 dot = Multijoin(
   [:i, :x, :y],
@@ -173,7 +196,10 @@ poly = Multijoin(
   
 interpret(env, poly)
 
-# throws up on type inference
-# compile(poly)
+# throws up on set <=> relation conversion
+interpret(env, compile(poly))
+
+using Base.Test
+@test interpret(env, poly) == interpret(env, compile(poly))
 
 end
