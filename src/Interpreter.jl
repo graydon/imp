@@ -1,7 +1,5 @@
 module Interpreter
 
-const Relation = Set
-
 abstract Expr
 
 struct Var <: Expr
@@ -22,71 +20,63 @@ end
 struct OrderedUnion <: Expr
   key::Vector{Int64} # column ix
   val::Vector{Int64}
-  relations::Vector{Expr}
+  sets::Vector{Expr}
 end
 
 struct Group <: Expr
   key::Vector{Int64}
   val::Vector{Int64}
-  relation::Expr
+  set::Expr
 end
 
-function materialize(env::Dict{Symbol, Relation}, expr::Var) ::Relation
+function materialize(env::Dict{Symbol, Set}, expr::Var) ::Set
   env[expr.name]
 end
 
-function materialize(env::Dict{Symbol, Relation}, expr::Let) ::Relation
+function materialize(env::Dict{Symbol, Set}, expr::Let) ::Set
   env = copy(env)
   env[expr.name] = materialize(expr.value)
   materialize(env, expr.body)
 end
 
-function product(relations::Vector{Set})
-  if isempty(relations)
+function product(sets::Vector{Set})
+  if isempty(sets)
     ((),)
   else
-    (tuple(row, rest...) for row in relations[1] for rest in product(relations[2:end]))
+    (tuple(row, rest...) for row in sets[1] for rest in product(sets[2:end]))
   end
 end
-
-function extend_bindings(bindings::Vector{Dict{Symbol, Any}}, relation::Relation, vars::Vector{Symbol})
-  extended_bindings = Dict{Symbol, Any}[]
-  for binding in bindings
-    for row in relation
-      satisfiable = all(enumerate(vars)) do col_var
-        col, var = col_var
-        (var == :(_)) || !haskey(binding, var) || (binding[var] == row[col])
+    
+function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Symbol}) ::Union{Dict{Symbol, Any}, Void}
+  extended_binding = copy(binding)
+  for (col, var) in enumerate(vars)
+    if var != :(_)
+      if haskey(binding, var) && (binding[var] != row[col])
+        return nothing
       end
-      if satisfiable
-        extended_binding = copy(binding)
-        for (col, var) in enumerate(vars)
-          if var != :(_)
-            extended_binding[var] = row[col]
-          end
-        end
-        push!(extended_bindings, extended_binding)
-      end
+      extended_binding[var] = row[col]
     end
   end
-  extended_bindings
+  extended_binding
 end
 
-function materialize(env::Dict{Symbol, Relation}, expr::Multijoin) ::Relation
+function extend_bindings(bindings::Vector{Dict{Symbol, Any}}, set::Set, vars::Vector{Symbol}) ::Vector{Dict{Symbol, Any}}
+  extended_bindings = [extend_binding(binding, row, vars) for binding in bindings for row in set]
+  filter((e) -> e != nothing, extended_bindings)
+end
+
+function materialize(env::Dict{Symbol, Set}, expr::Multijoin) ::Set
   bindings = [Dict{Symbol, Any}()]
   for (domain_expr, domain_vars) in expr.domain
     bindings = extend_bindings(bindings, materialize(env, domain_expr), domain_vars)
   end
-  joined = Set()
-  for binding in bindings
-    push!(joined, ntuple((i) -> binding[expr.vars[i]], length(expr.vars)))
-  end
-  joined
+  Set(ntuple((i) -> binding[expr.vars[i]], length(expr.vars)) for binding in bindings)
 end
 
-function materialize(env::Dict{Symbol, Relation}, expr::OrderedUnion) ::Relation
+function materialize(env::Dict{Symbol, Set}, expr::OrderedUnion) ::Set
   union = Dict()
-  for relation in expr.relations
-    for row in materialize(env, relation)
+  for set in expr.sets
+    for row in materialize(env, set)
       key = row[expr.key]
       if !haskey(union, key)
         union[key] = row[expr.val]
@@ -96,16 +86,16 @@ function materialize(env::Dict{Symbol, Relation}, expr::OrderedUnion) ::Relation
   Set((tuple(key..., val...) for (key, val) in union))
 end
 
-function materialize(env::Dict{Symbol, Relation}, expr::Group) ::Relation
+function materialize(env::Dict{Symbol, Set}, expr::Group) ::Set
   grouped = Dict()
-  for row in materialize(env, expr.relation)
+  for row in materialize(env, expr.set)
     group = get!(() -> Set(), grouped, row[expr.key])
     push!(group, row[expr.val])
   end
   Set((tuple(key..., val) for (key, val) in grouped))
 end
 
-env = Dict{Symbol, Relation}(
+env = Dict{Symbol, Set}(
   :+ => Set(((a, b, (a + b) % 3) for a in 0:2 for b in 0:2)),
   :* => Set(((a, b, (a * b) % 3) for a in 0:2 for b in 0:2)),
   :two => Set(((2,),)),
