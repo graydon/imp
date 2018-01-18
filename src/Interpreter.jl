@@ -1,5 +1,9 @@
 module Interpreter
 
+using Imp.Util
+
+# --- expressions ---
+
 abstract Expr
 
 struct Var <: Expr
@@ -7,8 +11,7 @@ struct Var <: Expr
 end
 
 struct Let <: Expr
-  name::Symbol
-  value::Expr
+  bindings::Vector{Tuple{Symbol, Expr}}
   body::Expr
 end
 
@@ -29,14 +32,28 @@ struct Group <: Expr
   set::Expr
 end
 
-function materialize(env::Dict{Symbol, Set}, expr::Var) ::Set
+# --- functions for walking expression tree ---
+
+map_keys(f::Function, pairs) = map((pair) -> f(pair[1]) => pair[2], pairs)
+map_vals(f::Function, pairs) = map((pair) -> pair[1] => f(pair[2]), pairs)
+map_exprs(f::Function, expr::Var) = expr
+map_exprs(f::Function, expr::Let) = Let(map_vals(f, expr.bindings), f(expr.body))
+map_exprs(f::Function, expr::Multijoin) = Multijoin(expr.vars, map_keys(f, expr.domain))
+map_exprs(f::Function, expr::Var) = OrderedUnion(expr,key, expr.val, map(f, expr.sets))
+map_exprs(f::Function, expr::Var) = Group(expr.key, expr.val, f(expr.set))
+
+# --- interpreter ---
+
+function interpret(env::Dict{Symbol, Set}, expr::Var) ::Set
   env[expr.name]
 end
 
-function materialize(env::Dict{Symbol, Set}, expr::Let) ::Set
+function interpret(env::Dict{Symbol, Set}, expr::Let) ::Set
   env = copy(env)
-  env[expr.name] = materialize(expr.value)
-  materialize(env, expr.body)
+  for name, value_expr in expr.bindings
+    env[name] = interpret(value_expr)
+  end
+  interpret(env, expr.body)
 end
     
 function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Symbol}) ::Union{Dict{Symbol, Any}, Void}
@@ -52,20 +69,20 @@ function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Sym
   extended_binding
 end
 
-function materialize(env::Dict{Symbol, Set}, expr::Multijoin) ::Set
+function interpret(env::Dict{Symbol, Set}, expr::Multijoin) ::Set
   bindings = [Dict{Symbol, Any}()]
   for (domain_expr, domain_vars) in expr.domain
-    set = materialize(env, domain_expr)
+    set = interpret(env, domain_expr)
     bindings = (extend_binding(binding, row, domain_vars) for binding in bindings for row in set)
     bindings = filter((e) -> e != nothing, bindings)
   end
   Set(ntuple((i) -> binding[expr.vars[i]], length(expr.vars)) for binding in bindings)
 end
 
-function materialize(env::Dict{Symbol, Set}, expr::OrderedUnion) ::Set
+function interpret(env::Dict{Symbol, Set}, expr::OrderedUnion) ::Set
   union = Dict()
   for set in expr.sets
-    for row in materialize(env, set)
+    for row in interpret(env, set)
       key = row[expr.key]
       if !haskey(union, key)
         union[key] = row[expr.val]
@@ -75,14 +92,16 @@ function materialize(env::Dict{Symbol, Set}, expr::OrderedUnion) ::Set
   Set((tuple(key..., val...) for (key, val) in union))
 end
 
-function materialize(env::Dict{Symbol, Set}, expr::Group) ::Set
+function interpret(env::Dict{Symbol, Set}, expr::Group) ::Set
   grouped = Dict()
-  for row in materialize(env, expr.set)
+  for row in interpret(env, expr.set)
     group = get!(() -> Set(), grouped, row[expr.key])
     push!(group, row[expr.val])
   end
   Set((tuple(key..., val) for (key, val) in grouped))
 end
+
+# --- examples ---
 
 env = Dict{Symbol, Set}(
   :+ => Set(((a, b, (a + b) % 3) for a in 0:2 for b in 0:2)),
@@ -100,7 +119,7 @@ dot = Multijoin(
   ],
   )
   
-materialize(env, dot)
+interpret(env, dot)
 
 poly = Multijoin(
   [:i, :x, :y, :t1, :t2, :t3, :t4, :t5, :z],
@@ -117,6 +136,6 @@ poly = Multijoin(
   ],
   )
   
-materialize(env, poly)
+interpret(env, poly)
 
 end
