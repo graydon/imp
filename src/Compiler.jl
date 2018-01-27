@@ -19,12 +19,14 @@ end
 
 Base.eltype(ring::Ring{T}) where {T} = T
 
-struct Constant
-  value::Any
+struct Constant{T}
+  value::T
 end
 
+@inline (constant::Constant)() = constant.value
+
 struct FunCall
-  name::Union{Symbol, Function}
+  name::Union{Constant, Symbol, Function}
   typ::Type
   args::Vector{Union{Symbol, FunCall, Constant}}
 end
@@ -291,11 +293,11 @@ end
 
 # --- function interface ---
 
-function can_index(::Type{T}) where {T <: Function}
+function can_index(::Type{T}) where {T <: Union{Function, Constant}}
   false
 end
 
-function count(::Type{T}, fun, args::Vector{Symbol}, var::Symbol) where {T <: Function}
+function count(::Type{T}, fun, args::Vector{Symbol}, var::Symbol) where {T <: Union{Function, Constant}}
   if var == args[end]
     1
   else 
@@ -303,7 +305,7 @@ function count(::Type{T}, fun, args::Vector{Symbol}, var::Symbol) where {T <: Fu
   end
 end
 
-function iter(::Type{T}, fun, args::Vector{Symbol}, var::Symbol, f) where {T <: Function}
+function iter(::Type{T}, fun, args::Vector{Symbol}, var::Symbol, f) where {T <: Union{Function, Constant}}
   value = gensym("value")
   if var == args[end]
     quote
@@ -317,19 +319,19 @@ function iter(::Type{T}, fun, args::Vector{Symbol}, var::Symbol, f) where {T <: 
   end
 end
 
-function prepare(::Type{T}, fun, args::Vector{Symbol}) where {T <: Function}
+function prepare(::Type{T}, fun, args::Vector{Symbol}) where {T <: Union{Function, Constant}}
   nothing
 end
 
-function contains(::Type{T}, fun, args::Vector{Symbol}) where {T <: Function}
+function contains(::Type{T}, fun, args::Vector{Symbol}) where {T <: Union{Function, Constant}}
   quote
     $(esc(fun))($(map(esc, args[1:end-1])...)) == $(esc(args[end]))
   end
 end
 
-function narrow_types(::Type{T}, fun_name, arg_types::Vector{Type}) where {T <: Function}
+function narrow_types(::Type{T}, fun_name, arg_types::Vector{Type}) where {T <: Union{Function, Constant}}
   # use Julia's type inference to narrow the type of the last arg
-  @assert isa(fun_name, Function) "Julia functions need to be early-bound (ie function pointers, not symbols) so we can infer types"
+  @assert isa(fun_name, Union{Function, Constant}) "Julia functions need to be early-bound (ie function pointers, not symbols) so we can infer types"
   return_types = Base.return_types(fun_name, tuple(arg_types[1:end-1]...))
   @assert !isempty(return_types) "This function cannot be called with these types: $fun_name $arg_types"
   new_arg_types = copy(arg_types)
@@ -618,8 +620,7 @@ function lower_constants(lambda::Lambda) ::Lambda
   lower_constant = (arg) -> begin
     if isa(arg, Constant)
       var = gensym("constant")
-      fun = @eval () -> $(arg.value)
-      push!(constants, FunCall(fun, typeof(fun), [var]))
+      push!(constants, FunCall(arg, typeof(arg), [var]))
       var
     else
       arg
