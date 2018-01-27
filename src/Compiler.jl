@@ -136,6 +136,11 @@ function simplify_expr(expr::Expr)
   end
 end
 
+function simplify_expr(symbol::Symbol)
+    # gensym and macroexpansion add '#' to symbol names, which makes them impossible to paste into the repl
+    Symbol(replace(string(symbol), "#", "_"))
+end
+
 function simplify_expr(other)
   other
 end
@@ -149,6 +154,19 @@ function inline(function_expr::Expr, value)
     end
     _ => error("Can't inline $function_expr")
   end
+end
+
+"Include the expr from a tmp file so the debugger has a text source to work with" 
+function debuggable_eval(expr)
+    (path, file) = mktemp()
+    text = string(expr)
+    
+    # annoyingly, infix functions with no args don't print in a parseable way
+    text = replace(text, "&()", "(&)()")
+    
+    write(file, text)
+    close(file)
+    include(path)
 end
 
 # --- relation interface ---
@@ -688,6 +706,9 @@ function Base.show(io::IO, compiled::Compiled)
   print(io, "Compiled($(repr(compiled.fun)), ...)")
 end
 
+"If true, clean up the generated code to make it readable and include it from a file so the debugger can see it. The roundtrip through the file is fragile, so try disabling this if compilation is failing."
+use_debuggable_eval = false
+
 function compile_function(lambda::Lambda)
   meta = Pair{Symbol, Any}[]
   push!(meta, :input => deepcopy(lambda)) 
@@ -708,8 +729,13 @@ function compile_function(lambda::Lambda)
     @Compiler.program($program)
   end)
   push!(meta, :code => code)
-  push!(meta, :simplify_expr => simplify_expr(code)) 
-  fun = eval(code)
+  simplified_code = simplify_expr(code)
+  push!(meta, :simplify_expr => simplified_code) 
+  if use_debuggable_eval
+      fun = debuggable_eval(simplified_code)
+  else
+      fun = eval(code)
+  end
   Compiled(fun, meta)
 end
 
@@ -735,8 +761,13 @@ function compile_relation(lambda::Lambda)
     @Compiler.program($program)
   end)
   push!(meta, :code => code)
-  push!(meta, :simplify_expr => simplify_expr(code)) 
-  fun = eval(code)
+  simplified_code = simplify_expr(code)
+  push!(meta, :simplify_expr => simplified_code) 
+  if use_debuggable_eval
+      fun = debuggable_eval(simplified_code)
+  else
+      fun = eval(code)
+  end
   Compiled(fun, meta)
 end
 
