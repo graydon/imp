@@ -428,23 +428,38 @@ macro body(args::Vector{Symbol}, body::SumProduct)
   free_vars = setdiff(union(map((call) -> call.args, body.domain)...), args)
   @assert length(free_vars) == 1 "Need to have factorized all lambdas: $free_vars $body"
   var = free_vars[1]
+  branches = [(
+    count(call.typ, call.name, convert(Vector{Symbol}, call.args), var),
+    :(return @sum($(body.ring), $(call), $(esc(var)), ($(esc(var))) -> begin
+        @product($(body.ring), $(body.domain[1:length(body.domain) .!= i]), $(body.value))
+      end)),
+    ) for (i, call) in enumerate(body.domain)]
+  branches = filter((branch) -> branch[1] != typemax(Int64), branches)
+  always_smallest = findfirst((branch) -> branch[1] == 1, branches)
+  if always_smallest > 0
+      branches = [branches[always_smallest]]
+  end
   quote
     $(@splice call in body.domain quote
       @prepare($call)
+    end) 
+    $(if length(branches) == 1
+        quote 
+            $(branches[1][2])
+        end
+    else
+        quote 
+            mins = tuple($(@splice branch in branches branch[1]))
+            min = Base.min(mins...)
+            $(@splice i in 1:length(branches) quote
+              if mins[$i] == min
+                $(branches[i][2])
+              end
+            end)
+            error("Impossibles!")
+        end
     end)
-    mins = tuple($(@splice call in body.domain quote
-      @count($call, $(esc(var)))
-    end))
-    min = Base.min(mins...)
-    $(@splice i in 1:length(body.domain) quote
-      if mins[$i] == min
-        return @sum($(body.ring), $(body.domain[i]), $(esc(var)), ($(esc(var))) -> begin
-          @product($(body.ring), $(body.domain[1:length(body.domain) .!= i]), $(body.value))
-        end)
-      end
-    end)
-    error("Impossibles!")
-  end
+   end
 end
 
 macro body(args::Vector{Symbol}, body::Insert)

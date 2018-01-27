@@ -179,7 +179,7 @@ end
 # using BenchmarkTools
 # const big_xx = Relation((collect(0:1000000),collect(0:1000000)))
 # const big_yy = Relation((collect(0:1000000), collect(reverse(0:1000000))))
-# big_inputs = Dict(:xx => big_xx, :yy => big_yy, :zz => zz)
+# big_inputs = Dict(:xx => big_xx, :yy => big_yy)
 # 
 # polynomial_ast5 = Lambda(
 #     :poly4,
@@ -187,8 +187,8 @@ end
 #     SumProduct(
 #       Ring{Int64}(+,*,1,0,nothing),
 #       [
-#         FunCall(:xx, typeof(xx), [:i, :x]),
-#         FunCall(:yy, typeof(yy), [:i, :y]),
+#         FunCall(:xx, typeof(big_xx), [:i, :x]),
+#         FunCall(:yy, typeof(big_yy), [:i, :y]),
 #         FunCall(*, [:x, :x, :t1]),
 #         FunCall(*, [:y, :y, :t2]),
 #         FunCall(*, [Constant(3), :x, :y, :t3]),
