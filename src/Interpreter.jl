@@ -4,17 +4,30 @@ using Imp.Util
 using Imp.Data
 using Imp.Compiler
 
+# TODO need to handle free variables? or compile as function?
+
 # --- expressions ---
 
 abstract Expr
+
+"A singleton set"
+struct Constant <: Expr
+  value::Any
+end
 
 "Recall an existing binding"
 struct Var <: Expr
   name::Symbol
 end
 
-"Create a new binding"
+"Create new bindings"
 struct Let <: Expr
+  bindings::Vector{Tuple{Symbol, Expr}}
+  body::Expr
+end
+
+"Create new bindings under a fixpoint"
+struct LetRec <: Expr
   bindings::Vector{Tuple{Symbol, Expr}}
   body::Expr
 end
@@ -32,11 +45,10 @@ struct OrderedUnion <: Expr
   sets::Vector{Expr}
 end
 
-"Map each unique value of `row[key]` to the set of values of `row[val]`"
-struct Group <: Expr
-  key::Vector{Int64}
-  val::Vector{Int64}
-  set::Expr
+"Reduce the last column of `body` using the binary operation `op`"
+struct Reduce <: Expr
+  op::Expr
+  body::Expr
 end
 
 "Run some precompiled function"
@@ -49,8 +61,10 @@ end
 
 map_keys(f::Function, pairs) = map((pair) -> f(pair[1]) => pair[2], pairs)
 map_vals(f::Function, pairs) = map((pair) -> pair[1] => f(pair[2]), pairs)
+map_exprs(f::Function, expr::Constant) = expr
 map_exprs(f::Function, expr::Var) = expr
 map_exprs(f::Function, expr::Let) = Let(map_vals(f, expr.bindings), f(expr.body))
+map_exprs(f::Function, expr::LetRec) = LetRec(map_vals(f, expr.bindings), f(expr.body))
 map_exprs(f::Function, expr::Multijoin) = Multijoin(expr.vars, map_keys(f, expr.domain))
 map_exprs(f::Function, expr::Var) = OrderedUnion(expr,key, expr.val, map(f, expr.sets))
 map_exprs(f::Function, expr::Var) = Group(expr.key, expr.val, f(expr.set))
@@ -58,14 +72,38 @@ map_exprs(f::Function, expr::Compiled) = expr
 
 # --- interpreter ---
 
-function interpret(env::Dict{Symbol, Set}, expr::Var) ::Set
+const Env = Dict{Symbol, Set}
+
+function interpret(env::Env, expr::Constant) ::Set
+  Set((expr.value,))
+end
+
+function interpret(env::Env, expr::Var) ::Set
   env[expr.name]
 end
 
-function interpret(env::Dict{Symbol, Set}, expr::Let) ::Set
+function interpret(env::Env, expr::Let) ::Set
   env = copy(env)
   for (name, value_expr) in expr.bindings
     env[name] = interpret(env, value_expr)
+  end
+  interpret(env, expr.body)
+end
+
+function interpret(env::Dict{Symbol, Set}, expr::LetRec) ::Set
+  env = copy(env)
+  while true
+    changed = false
+    for (name, value_expr) in expr.bindings
+      new_set = interpret(env, value_expr)
+      if !haskey(env, name) || (env[name] != new_set)
+        changed = true
+        env[name] = new_set
+      end
+    end
+    if changed == true
+      break
+    end
   end
   interpret(env, expr.body)
 end
@@ -83,7 +121,7 @@ function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Sym
   extended_binding
 end
 
-function interpret(env::Dict{Symbol, Set}, expr::Multijoin) ::Set
+function interpret(env::Env, expr::Multijoin) ::Set
   bindings = [Dict{Symbol, Any}()]
   for (domain_expr, domain_vars) in expr.domain
     set = interpret(env, domain_expr)
@@ -93,7 +131,7 @@ function interpret(env::Dict{Symbol, Set}, expr::Multijoin) ::Set
   Set(ntuple((i) -> binding[expr.vars[i]], length(expr.vars)) for binding in bindings)
 end
 
-function interpret(env::Dict{Symbol, Set}, expr::OrderedUnion) ::Set
+function interpret(env::Env, expr::OrderedUnion) ::Set
   union = Dict()
   for set in expr.sets
     for row in interpret(env, set)
@@ -106,16 +144,13 @@ function interpret(env::Dict{Symbol, Set}, expr::OrderedUnion) ::Set
   Set((tuple(key..., val...) for (key, val) in union))
 end
 
-function interpret(env::Dict{Symbol, Set}, expr::Group) ::Set
-  grouped = Dict()
-  for row in interpret(env, expr.set)
-    group = get!(() -> Set(), grouped, row[expr.key])
-    push!(group, row[expr.val])
-  end
-  Set((tuple(key..., val) for (key, val) in grouped))
+function interpret(env::Env, expr::Reduce) ::Set
+  op = Dict((row[1], row[2]) => row[3] for row in interpret(env, expr.op))
+  body = sort(collect(interpret(env, expr.body)))
+  reduce((a,b) -> op[(a,b)], (row[end] for row in body))
 end
 
-function interpret(env::Dict{Symbol, Set}, expr::Compiled) ::Set
+function interpret(env::Env, expr::Compiled) ::Set
   expr.f(Dict((arg => env[arg] for arg in expr.args)))
 end
 
