@@ -5,10 +5,20 @@ using Imp.Data
 using Imp.Compiler
 
 # TODO need to handle free variables? or compile as function?
+# OrderedUnion as multiple values on Multijoin?
+# Forumala=expr but solve for free variable?
 
 # --- expressions ---
 
-abstract Expr
+abstract type Expr end
+
+"A zero-column zero-row set"
+struct False <: Expr
+end
+
+"A zero-column one-row set"
+struct True <: Expr
+end
 
 "A singleton set"
 struct Constant <: Expr
@@ -29,6 +39,12 @@ end
 "Create new bindings under a fixpoint"
 struct LetRec <: Expr
   bindings::Vector{Tuple{Symbol, Expr}}
+  body::Expr
+end
+
+"Function-like application of `head` to `body`"
+struct Application <: Expr
+  head::Expr
   body::Expr
 end
 
@@ -72,7 +88,19 @@ map_exprs(f::Function, expr::Compiled) = expr
 
 # --- interpreter ---
 
+function width(set::Set{T}) where {T <: Tuple}
+  length(T.parameters)
+end
+
 const Env = Dict{Symbol, Set}
+
+function interpret(env::Env, expr::False) ::Set
+  Set{Tuple{}}()
+end
+
+function interpret(env::Env, expr::True) ::Set
+  Set{Tuple{}}(())
+end
 
 function interpret(env::Env, expr::Constant) ::Set
   Set((expr.value,))
@@ -107,8 +135,16 @@ function interpret(env::Dict{Symbol, Set}, expr::LetRec) ::Set
   end
   interpret(env, expr.body)
 end
+
+function interpret(env::Env, expr::Application) ::Set
+  head = interpret(env, expr.head)
+  body = interpret(env, expr.body)
+  key = 1:width(body)
+  val = (width(body)+1):width(head)
+  result = Set((row[val] for row in head if row[key] in body))
+end
     
-function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Symbol}) ::Dict{Symbol, Any} ::Union{Dict{Symbol, Any}, Void}
+function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Symbol}) ::Union{Dict{Symbol, Any}, Void}
   extended_binding = copy(binding)
   for (col, var) in enumerate(vars)
     if var != :(_)
@@ -126,7 +162,7 @@ function interpret(env::Env, expr::Multijoin) ::Set
   for (domain_expr, domain_vars) in expr.domain
     set = interpret(env, domain_expr)
     bindings = (extend_binding(binding, row, domain_vars) for binding in bindings for row in set)
-    bindings = filter((e) -> e != nothing, bindings)
+    bindings = Iterators.filter((e) -> e != nothing, bindings)
   end
   Set(ntuple((i) -> binding[expr.vars[i]], length(expr.vars)) for binding in bindings)
 end
@@ -185,7 +221,7 @@ function compile(expr::Multijoin) ::Expr
       SumProduct(
         Ring{Bool}(|, &, true, false, nothing),
         [FunCall(name, typeof(compiled_env[name]), domain_vars) for (name, (_, domain_vars)) in zip(names, expr.domain)],
-        [Constant(true)],
+        [Compiler.Constant(true)],
       ),
     )
     compiled = compile_relation(lambda)
