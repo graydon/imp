@@ -152,6 +152,19 @@ function interpret(env::Env, expr::Application) ::Set
   val = (width(body)+1):width(head)
   result = Set((row[val] for row in head if row[key] in body))
 end
+
+function interpret(env::Env, expr::Abstraction) ::Set
+  env = copy(env)
+  result = Set()
+  values = []
+  interpret(env, expr.domain, expr.variable, values)
+  for value in values
+    env[expr.variable] = value
+    for row in interpret(env, expr.value) 
+      push!(result, (value, row...))
+    end
+  end
+end
     
 function extend_binding(binding::Dict{Symbol, Any}, row::Tuple, vars::Vector{Symbol}) ::Union{Dict{Symbol, Any}, Void}
   extended_binding = copy(binding)
