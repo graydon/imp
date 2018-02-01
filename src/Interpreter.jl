@@ -7,6 +7,8 @@ using Imp.Compiler
 # TODO need to handle free variables? or compile as function?
 # OrderedUnion as multiple values on Multijoin?
 # Forumala=expr but solve for free variable?
+# How does Boute handle forall/bool? Everything is a function?
+# Does TC make sense, operating over whole relations rather than pointwise?
 
 # --- expressions ---
 
@@ -46,6 +48,13 @@ end
 struct Application <: Expr
   head::Expr
   body::Expr
+end
+
+"Set comprehension"
+struct Abstraction <: Expr
+  variable::Symbol
+  domain::Formula
+  value::Expr
 end
 
 "Return all bindings of `vars` that satisfy `domain`"
