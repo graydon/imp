@@ -50,7 +50,7 @@ for column in 1:size(schema)[1]
 end
 
 if !isfile("./data/imdb.jld")
-  println("Warning: data/imdb.jld not found. Attempting build from source data.")
+  println("Warning: data/imdb.jld not found. Attempting to build from source data.")
   if isempty(table_column_names)
     println("Warning: source data in ../imdb not found.")
     error("Cannot load imdb data for JOB")
