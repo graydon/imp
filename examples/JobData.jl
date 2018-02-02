@@ -50,6 +50,11 @@ for column in 1:size(schema)[1]
 end
 
 if !isfile("./data/imdb.jld")
+  println("Warning: data/imdb.jld not found. Attempting build from source data.")
+  if isempty(table_column_names)
+    println("Warning: source data in ../imdb not found.")
+    error("Cannot load imdb data for JOB")
+  end
   frames = Dict()
   @show @time for (table_name, column_names) in table_column_names
     column_types = table_column_types[table_name]
@@ -65,6 +70,7 @@ if !isfile("./data/imdb.jld")
   end
   @show @time save("./data/imdb.jld", "frames", frames)
 else 
+  println("Loading imdb data from data/imdb.jld. This will take several minutes.")
   frames = @show @time load("./data/imdb.jld", "frames")
   # have to intern again - not preserved by jld :(
   @show @time for frame in values(frames)
