@@ -49,7 +49,7 @@ for column in 1:size(schema)[1]
   end
 end
 
-if !isfile("../imdb/imdb.jld")
+if !isfile("./data/imdb.jld")
   frames = Dict()
   @show @time for (table_name, column_names) in table_column_names
     column_types = table_column_types[table_name]
@@ -63,9 +63,9 @@ if !isfile("../imdb/imdb.jld")
     end
     frames[table_name] = frame
   end
-  @show @time save("../imdb/imdb.jld", "frames", frames)
+  @show @time save("./data/imdb.jld", "frames", frames)
 else 
-  frames = @show @time load("../imdb/imdb.jld", "frames")
+  frames = @show @time load("./data/imdb.jld", "frames")
   # have to intern again - not preserved by jld :(
   @show @time for frame in values(frames)
     for column in frame.columns
