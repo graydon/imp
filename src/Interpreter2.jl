@@ -1,14 +1,6 @@
 module Interpreter
 
-using Imp.Util
-using Imp.Data
-using Imp.Compiler
-
-# TODO need to handle free variables? or compile as function?
-# OrderedUnion as multiple values on Multijoin?
-# Forumala=expr but solve for free variable?
-# How does Boute handle forall/bool? Everything is a function?
-# Does TC make sense, operating over whole relations rather than pointwise?
+# TODO handle infinite relations?
 
 # --- expressions ---
 
@@ -86,24 +78,29 @@ end
 
 const Env = Dict{Symbol, Any}
 
-# --- functions for walking expression tree ---
-
-map_keys(f::Function, pairs) = map((pair) -> f(pair[1]) => pair[2], pairs)
-map_vals(f::Function, pairs) = map((pair) -> pair[1] => f(pair[2]), pairs)
-map_exprs(f::Function, expr::Constant) = expr
-map_exprs(f::Function, expr::Var) = expr
-map_exprs(f::Function, expr::Let) = Let(map_vals(f, expr.bindings), f(expr.body))
-map_exprs(f::Function, expr::LetRec) = LetRec(map_vals(f, expr.bindings), f(expr.body))
-map_exprs(f::Function, expr::Multijoin) = Multijoin(expr.vars, map_keys(f, expr.domain))
-map_exprs(f::Function, expr::Var) = OrderedUnion(expr,key, expr.val, map(f, expr.sets))
-map_exprs(f::Function, expr::Var) = Group(expr.key, expr.val, f(expr.set))
-map_exprs(f::Function, expr::Compiled) = expr
-
 # --- bool_expr interpreter ---
 
-function interpret(env::Env, expr::Application, variable::Symbol) ::Vector{Any}
+function interpret(env::Env, expr::Application, variable::Symbol) ::Set{Any}
+  head = env[expr.head]
+  ix = findfirst(expr.body, variable)
+  is_match(row) = all(zip(row, expr.body)) do pair
+    value, binding = pair
+    (binding == :(_)) || ((binding == variable) && (row[ix] == value)) || (env[binding] == value)
+  end
+  Set((row[ix] for row in head if is_match(row)))
+end
+
+function interpret(env::Env, expr::And, variable::Symbol) ::Set{Any}
+  intersect(interpret(env, expr.left, variable), interpret(env, expr.right, variable))
+end
+
+function interpret(env::Env, expr::Or, variable::Symbol) ::Set{Any}
+  union(interpret(env, expr.left, variable), interpret(env, expr.right, variable))
 end
   
+function interpret(env::Env, expr::Not, variable::Symbol) ::Set{Any}
+  error("Unimplemented")
+end
 
 # --- set_expr interpreter ---
 
@@ -112,7 +109,7 @@ function interpret(env::Env, expr::False) ::Set
 end
 
 function interpret(env::Env, expr::True) ::Set
-  Set{Tuple{}}(())
+  Set{Tuple{}}(((),))
 end
 
 function interpret(env::Env, expr::Constant) ::Set
@@ -154,21 +151,24 @@ function interpret(env::Env, expr::Abstraction) ::Set
   result = Set()
   for value in interpret(env, expr.domain, expr.variable)
     env[expr.variable] = value
+    # TODO do we care about totality here?
     for row in interpret(env, expr.value) 
       push!(result, (value, row...))
     end
   end
+  result
 end
 
 function interpret(env::Env, expr::Reduce) ::Set
   op = Dict((row[1], row[2]) => row[3] for row in interpret(env, expr.op))
   body = sort(collect(interpret(env, expr.body)))
-  reduce((a,b) -> op[(a,b)], (row[end] for row in body))
+  result = reduce((a,b) -> op[(a,b)], (row[end] for row in body))
+  Set((result,))
 end
 
 # --- examples ---
 
-env = Dict{Symbol, Set}(
+env = Env(
   :+ => Set{Tuple{Int64, Int64, Int64}}(((a, b, (a + b) % 3) for a in 0:2 for b in 0:2)),
   :* => Set{Tuple{Int64, Int64, Int64}}(((a, b, (a * b) % 3) for a in 0:2 for b in 0:2)),
   :two => Set(((2,),)),
@@ -178,37 +178,41 @@ env = Dict{Symbol, Set}(
   
 interpret(env, Let([(:foo, Var(:xx))], Var(:foo)))
   
-dot = Multijoin(
-  [:i, :x, :y],
-  [
-    (Var(:xx), [:i, :x]),
-    (Var(:yy), [:i, :y]),
-  ],
-  )
+interpret(env, True())  
+  
+interpret(env, Abstraction(:i, Application(:xx, [:i, :(_)]), True())) 
+  
+# sum(i : xx(i, x), yy(i, y) . x * y)  
+dot = begin
+  Reduce(Var(:+),
+    Abstraction(:i, And(Application(:xx, [:i, :(_)]), Application(:yy, [:i, :(_)])),
+      Abstraction(:x, Application(:xx, [:i, :x]),
+        Abstraction(:y, Application(:yy, [:i, :y]),
+          Abstraction(:v, Application(:*, [:x, :y, :v]),
+            True())))))
+          end
   
 interpret(env, dot)
 
-poly = Multijoin(
-  [:i, :x, :y, :t1, :t2, :t3, :t4, :t5, :z],
-  [
-    (Var(:xx), [:i, :x]),
-    (Var(:yy), [:i, :y]),
-    (Var(:*), [:x, :x, :t1]),
-    (Var(:*), [:y, :y, :t2]),
-    (Var(:two), [:two]),
-    (Var(:*), [:two, :x, :t3]),
-    (Var(:*), [:t3, :y, :t4]),
-    (Var(:+), [:t1, :t2, :t5]),
-    (Var(:+), [:t4, :t5, :z]),
-  ],
-  )
+# i : xx(i, x), yy(i, y) . x*x + y*y + 2*x*y
+poly = begin
+  Let([(:intermediate,
+        Abstraction(:i, And(Application(:xx, [:i, :(_)]), Application(:yy, [:i, :(_)])),
+          Abstraction(:x, Application(:xx, [:i, :x]),
+            Abstraction(:y, Application(:yy, [:i, :y]),
+              Abstraction(:t1, Application(:*, [:x, :x, :t1]),
+                Abstraction(:t2, Application(:*, [:y, :y, :t2]),
+                  Abstraction(:t3, Application(:two, [:t3]),
+                    Abstraction(:t4, Application(:*, [:t3, :x, :t4]),
+                      Abstraction(:t5, Application(:*, [:t4, :y, :t5]),
+                        Abstraction(:t6, Application(:+, [:t1, :t2, :t6]),
+                          Abstraction(:z, Application(:+, [:t5, :t6, :z]),
+                            True())))))))))))],
+      Abstraction(:i, Application(:intermediate, [:i, :(_), :(_), :(_), :(_), :(_), :(_), :(_), :(_), :(_)]),
+        Abstraction(:z, Application(:intermediate, [:i, :(_), :(_), :(_), :(_), :(_), :(_), :(_), :(_), :z]),
+          True())))
+        end
   
 interpret(env, poly)
-
-# # throws up on set <=> relation conversion
-# interpret(env, compile(poly))
-# 
-# using Base.Test
-# @test interpret(env, poly) == interpret(env, compile(poly))
 
 end
