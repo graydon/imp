@@ -78,7 +78,7 @@ end
 
 const Env = Dict{Symbol, Any}
 
-# --- bool_expr interpreter ---
+# --- BoolExpr interpreter ---
 
 function interpret(env::Env, expr::Application, variable::Symbol) ::Set{Any}
   head = env[expr.head]
@@ -91,7 +91,12 @@ function interpret(env::Env, expr::Application, variable::Symbol) ::Set{Any}
 end
 
 function interpret(env::Env, expr::And, variable::Symbol) ::Set{Any}
-  intersect(interpret(env, expr.left, variable), interpret(env, expr.right, variable))
+  @assert typeof(expr.left) != Not "`Not` may only occur as the right-hand side of an `And` expression"
+  if typeof(expr.right) == Not  
+    setdiff(interpret(env, expr.left, variable), interpret(env, expr.right.value, variable))
+  else
+    intersect(interpret(env, expr.left, variable), interpret(env, expr.right, variable))
+  end
 end
 
 function interpret(env::Env, expr::Or, variable::Symbol) ::Set{Any}
@@ -99,10 +104,10 @@ function interpret(env::Env, expr::Or, variable::Symbol) ::Set{Any}
 end
   
 function interpret(env::Env, expr::Not, variable::Symbol) ::Set{Any}
-  error("Unimplemented")
+  error("`Not` may only occur as the right-hand side of an `And` expression")
 end
 
-# --- set_expr interpreter ---
+# --- SetExpr interpreter ---
 
 function interpret(env::Env, expr::False) ::Set
   Set{Tuple{}}()
@@ -168,12 +173,14 @@ end
 
 # --- examples ---
 
+# do everything modulo 3 for now to keep it finite
 env = Env(
   :+ => Set{Tuple{Int64, Int64, Int64}}(((a, b, (a + b) % 3) for a in 0:2 for b in 0:2)),
   :* => Set{Tuple{Int64, Int64, Int64}}(((a, b, (a * b) % 3) for a in 0:2 for b in 0:2)),
   :two => Set(((2,),)),
   :xx => Set(((i, i) for i in 0:2)),
   :yy => Set(((i, 2 - i) for i in 0:2)),
+  :(=) => Set(((i,i) for i in 0:2)),
   )
   
 interpret(env, Let([(:foo, Var(:xx))], Var(:foo)))
@@ -214,5 +221,14 @@ poly = begin
         end
   
 interpret(env, poly)
+
+# i, y : yy(i, y), i != y
+diff = begin
+  Abstraction(:i, Application(:yy, [:i, :(_)]),
+    Abstraction(:y, And(Application(:yy, [:i, :y]), Not(Application(:(=), [:i, :y]))),
+      True()))
+    end
+    
+interpret(env, diff)
 
 end
