@@ -4,6 +4,7 @@ module Interpreter
 
 # --- expressions ---
 
+# TODO if we deref a scalar in a set context, should it be wrapped or should it be an error?
 "The environment maps symbols to scalars or sets of tuples of scalars"
 const Env = Dict{Symbol, Any}
 
