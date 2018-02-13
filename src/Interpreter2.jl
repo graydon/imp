@@ -4,27 +4,36 @@ module Interpreter
 
 # --- expressions ---
 
+"The environment maps symbols to scalars or sets of tuples of scalars"
+const Env = Dict{Symbol, Any}
+
+"An expression with semantics `Env -> Bool`"
 abstract type BoolExpr end
 
+"True iff `body` tuple is contained in `head` set"
 struct Application <: BoolExpr
   head::Symbol
   body::Vector{Symbol}
 end
 
+"Boolean and"
 struct And <: BoolExpr
   left::BoolExpr
   right::BoolExpr
 end
 
+"Boolean or"
 struct Or <: BoolExpr
   left::BoolExpr
   right::BoolExpr
 end
 
+"Boolean not. Can only occur as the rhs of an `And` expr i.e. `And(..., Not(...))`"
 struct Not <: BoolExpr
   value::BoolExpr
 end
 
+"An expression with semantics `Env -> Set{Tuple}`"
 abstract type SetExpr end
 
 "A zero-column zero-row set"
@@ -75,8 +84,6 @@ struct Compiled <: SetExpr
   args::Vector{Symbol}
   f::Function
 end
-
-const Env = Dict{Symbol, Any}
 
 # --- BoolExpr interpreter ---
 
