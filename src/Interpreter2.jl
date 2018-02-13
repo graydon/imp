@@ -133,18 +133,21 @@ function interpret(env::Env, expr::Let) ::Set
   interpret(env, expr.body)
 end
 
-function interpret(env::Dict{Symbol, Set}, expr::LetRec) ::Set
+function interpret(env::Env, expr::LetRec) ::Set
   env = copy(env)
+  for (name, _) in expr.bindings
+    env[name] = Set()
+  end
   while true
     changed = false
     for (name, value_expr) in expr.bindings
       new_set = interpret(env, value_expr)
-      if !haskey(env, name) || (env[name] != new_set)
+      if env[name] != new_set
         changed = true
         env[name] = new_set
       end
     end
-    if changed == true
+    if changed == false
       break
     end
   end
@@ -230,5 +233,21 @@ diff = begin
     end
     
 interpret(env, diff)
+
+# closed = union(2, closed, last_column(y : closed(y) . y + y))
+closed = begin
+  LetRec([(:closed,
+    Let([(:intermediate,
+      Abstraction(:y, Application(:closed, [:y]),
+        Abstraction(:v, Application(:+, [:y, :y, :v]),
+          True())))],
+      Abstraction(:y, Or(Application(:two, [:y]), 
+                        Or(Application(:closed, [:y]), 
+                           Application(:intermediate, [:(_), :y]))),
+        True())))],
+    Var(:closed))
+  end
+  
+interpret(env, closed)
 
 end
