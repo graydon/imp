@@ -21,7 +21,7 @@ function get_method_instance(f, typs)
   world = ccall(:jl_get_world_counter, UInt, ())
   tt = typs isa Type ? Tuple{typeof(f), typs.parameters...} : Tuple{typeof(f), typs...}
   results = Base._methods_by_ftype(tt, -1, world)
-  @assert length(results) == 1
+  @assert length(results) == 1 "get_method_instance returned multiple methods: $results"
   (_, _, meth) = results[1]
   # TODO not totally sure what jl_match_method is needed for - I think it's just extracting type parameters like `where {T}`
   (ti, env) = ccall(:jl_match_method, Any, (Any, Any), tt, meth.sig)::SimpleVector
@@ -44,7 +44,7 @@ end
 
 "Does this expression never have a real type?"
 function is_untypeable(expr::Expr)
-  expr.head in [:(=), :line, :boundscheck, :gotoifnot, :return, :meta, :inbounds] || (expr.head == :call && expr.args[1] == :throw)
+  expr.head in [:(=), :line, :boundscheck, :gotoifnot, :return, :meta, :inbounds, :throw] || (expr.head == :call && expr.args[1] == :throw)
 end
 
 struct Body 
@@ -183,11 +183,18 @@ function call_graph(method_instance::Core.MethodInstance, max_calls=1000::Int64)
   error("call_graph reached $max_calls calls and gave up")
 end
 
+function pretty(method_instance::Core.MethodInstance)
+  original = string(method_instance)
+  shortened = replace(original, "MethodInstance for ", "")
+  method = method_instance.def
+  "$shortened in $(method.module) at $(method.file):$(method.line)"
+end
+
 function analyze(f, typs)
   for (call, child_calls) in call_graph(get_method_instance(f, typs))
-    show(call.def); println();
+    print(pretty(call)); println();
     for child_call in child_calls
-      print("  Calls: "); show(child_call.def); println();
+      print("  Calls: "); print(pretty(child_call)); println();
     end
     for warning in warnings(call).warnings
       print("  "); print(warning.kind); print(": "); show(warning.location); println();
