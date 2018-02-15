@@ -205,11 +205,14 @@ function pretty(code_info::CodeInfo, warning::Warning)
   String(buffer)
 end
 
-function pretty(code_info::CodeInfo)
+function pretty(code_info::CodeInfo, return_typ::Type)
   slotnames = Base.sourceinfo_slotnames(code_info)
   buffer = IOBuffer()
   io = IOContext(buffer, :TYPEEMPHASIZE => true, :SOURCEINFO => code_info, :SOURCE_SLOTNAMES => slotnames)
-  Base.show_unquoted(io, code_info)
+  body = Expr(:body)
+  body.args = code_info.code
+  body.typ = return_typ
+  Base.show_unquoted(io, body)
   String(buffer)
 end
 
@@ -229,7 +232,8 @@ function analyze(f, typs, filter::Function)
         print("  "); print(pretty(warnings.code_info, warning)); println();
       end
       if !isempty(warnings.warnings)
-        println(pretty(warnings.code_info))
+        code_info, return_typ = get_code_info(call_node.call)
+        println(pretty(code_info, return_typ))
       end
     end
   end
