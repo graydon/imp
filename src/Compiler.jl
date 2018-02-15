@@ -363,7 +363,7 @@ macro contains(call); contains(call.typ, call.name, convert(Vector{Symbol}, call
 macro state(env, state::Index)
   fun = gensym("fun")
   quote 
-    $(esc(fun))::$(state.typ) = $(esc(env))[$(Expr(:quote, state.fun))]
+    $(esc(fun)) = $(esc(env))[$(Expr(:quote, state.fun))]::$(state.typ)
     const $(esc(state.name)) = $(get_index(state.typ, fun, state.permutation))
   end
 end
@@ -384,7 +384,7 @@ macro product(ring::Ring, domain::Vector{Union{FunCall, IndexCall}}, value::Vect
       _::Symbol => call
     end
     code = quote
-      result = $(ring.mult)(result, $(esc(called)))
+      result = $(ring.mult)(result, $(esc(called))::$(eltype(ring)))
       if result == $(ring.zero)
         $(ring.zero)
       else
@@ -412,8 +412,8 @@ macro sum(ring::Ring, call::Union{FunCall, IndexCall}, var, f)
   quote
     result = $(ring.zero)
     @iter($call, $(esc(var)), ($(esc(value))) -> begin
-      result = $(ring.add)(result, $(esc(inline(f, value))))
-      result != $(ring.max)
+      result = $(ring.add)(result, $(esc(inline(f, value)))::$(eltype(ring)))
+      $(ring.max == nothing ? true : :(result != $(ring.max)))
     end)
     result
   end
