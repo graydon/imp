@@ -160,21 +160,30 @@ function get_child_calls(method_instance::Core.MethodInstance)
   calls
 end
 
-function call_graph(method_instance::Core.MethodInstance, max_calls=1000::Int64) ::Vector{Pair{Core.MethodInstance, Set{Core.MethodInstance}}}
-  all = Dict{Core.MethodInstance, Set{Core.MethodInstance}}()
+struct CallNode
+  call::Core.MethodInstance
+  parent_calls::Set{Core.MethodInstance}
+  child_calls::Set{Core.MethodInstance}
+end
+
+function call_graph(method_instance::Core.MethodInstance, max_calls=1000::Int64) ::Vector{CallNode}
+  all = Dict{Core.MethodInstance, CallNode}()
   ordered = Vector{Core.MethodInstance}()
-  unexplored = Set{Core.MethodInstance}((method_instance,))
+  unexplored = Set{Tuple{Union{Void, Core.MethodInstance}, Core.MethodInstance}}(((nothing, method_instance),))
   for _ in 1:max_calls
     if isempty(unexplored)
-      return [call => all[call] for call in ordered]
+      return [all[call] for call in ordered]
     end
-    method_instance = pop!(unexplored)
-    child_calls= get_child_calls(method_instance)
-    all[method_instance] = child_calls
-    push!(ordered, method_instance)
+    (parent, call) = pop!(unexplored)
+    child_calls= get_child_calls(call)
+    parent_calls = parent == nothing ? Set() : Set((parent,))
+    all[call] = CallNode(call, parent_calls, child_calls)
+    push!(ordered, call)
     for child_call in child_calls
       if !haskey(all, child_call)
-        push!(unexplored, child_call)
+        push!(unexplored, (call, child_call))
+      else
+        push!(all[child_call].parent_calls, call)
       end
     end
   end
@@ -197,14 +206,17 @@ function pretty(code_info::CodeInfo, warning::Warning)
 end
 
 function analyze(f, typs, filter::Function)
-  for (call, child_calls) in call_graph(get_method_instance(f, typs))
-    if filter(call)
+  for call_node in call_graph(get_method_instance(f, typs))
+    if filter(call_node.call)
       println();
-      print(pretty(call)); println();
-      for child_call in child_calls
+      print(pretty(call_node.call)); println();
+      for parent_call in call_node.parent_calls
+        print("  Called from: "); print(pretty(parent_call)); println();
+      end
+      for child_call in call_node.child_calls
         print("  Calls: "); print(pretty(child_call)); println();
       end
-      warnings = get_warnings(call)
+      warnings = get_warnings(call_node.call)
       for warning in warnings.warnings
         print("  "); print(pretty(warnings.code_info, warning)); println();
       end
