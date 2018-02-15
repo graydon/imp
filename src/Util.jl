@@ -48,19 +48,20 @@ function is_untypeable(expr::Expr)
   expr.head in [:(=), :line, :boundscheck, :gotoifnot, :return, :meta, :inbounds, :throw] || (expr.head == :call && expr.args[1] == :throw)
 end
 
-function is_throw(expr)
+function is_error_path(expr)
   expr == :throw ||
   expr == :throw_boundserror || 
-  (expr isa GlobalRef && is_throw(expr.name))
+  expr == :error ||
+  expr == :assert || 
+  (expr isa GlobalRef && is_error_path(expr.name)) ||
+  (expr isa Core.MethodInstance && is_error_path(expr.def.name))
 end
 
 "Is it pointless to analyze this expression?"
 function should_ignore(expr::Expr)
-  throws = [:throw, :throw_boundserror, GlobalRef]
-  is_throw(expr.head) || 
-  (expr.head == :call && is_throw(expr.args[1])) ||
-  (expr.head == :call && expr.args[1] isa GlobalRef && is_throw(expr.args[1].name)) ||
-  (expr.head == :invoke && expr.args[1] isa Core.MethodInstance && is_throw(expr.args[1].def.name))
+  is_error_path(expr.head) || 
+  (expr.head == :call && is_error_path(expr.args[1])) ||
+  (expr.head == :invoke && is_error_path(expr.args[1]))
 end
 
 struct MethodResult 
