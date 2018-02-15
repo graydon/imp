@@ -17,6 +17,11 @@ end
 
 export @showtime, @splice
 
+# TODO distinguish better between static and dynamic calls
+# invoke with non-leaf types may be dynamic
+# call with leaf types may be static (grab the method instance?)
+# TODO print warnings nicely
+
 function get_method_instance(f, typs)
   world = ccall(:jl_get_world_counter, UInt, ())
   tt = typs isa Type ? Tuple{typeof(f), typs.parameters...} : Tuple{typeof(f), typs...}
@@ -162,7 +167,7 @@ function get_child_calls(method_instance::Core.MethodInstance)
   calls
 end
 
-function call_graph(method_instance::Core.MethodInstance, max_calls=1000::Int64) ::Vector{Pair{Core.MethodInstance, Set{Core.MethodInstance}}}
+function call_graph(method_instance::Core.MethodInstance, filter::Function, max_calls=1000::Int64) ::Vector{Pair{Core.MethodInstance, Set{Core.MethodInstance}}}
   all = Dict{Core.MethodInstance, Set{Core.MethodInstance}}()
   ordered = Vector{Core.MethodInstance}()
   unexplored = Set{Core.MethodInstance}((method_instance,))
@@ -175,7 +180,7 @@ function call_graph(method_instance::Core.MethodInstance, max_calls=1000::Int64)
     all[method_instance] = child_calls
     push!(ordered, method_instance)
     for child_call in child_calls
-      if !haskey(all, child_call)
+      if filter(child_call) && !haskey(all, child_call)
         push!(unexplored, child_call)
       end
     end
@@ -190,8 +195,8 @@ function pretty(method_instance::Core.MethodInstance)
   "$shortened in $(method.module) at $(method.file):$(method.line)"
 end
 
-function analyze(f, typs)
-  for (call, child_calls) in call_graph(get_method_instance(f, typs))
+function analyze(f, typs, filter::Function)
+  for (call, child_calls) in call_graph(get_method_instance(f, typs), filter)
     print(pretty(call)); println();
     for child_call in child_calls
       print("  Calls: "); print(pretty(child_call)); println();
@@ -206,8 +211,13 @@ end
   macro warnings(ex0)
     Base.gen_call_with_extracted_types($(Expr(:quote, :warnings)), ex0)
   end
+  macro analyze(filter, ex0)
+    expr = Base.gen_call_with_extracted_types($(Expr(:quote, :analyze)), ex0)
+    push!(expr.args, esc(filter))
+    expr
+  end
   macro analyze(ex0)
-    Base.gen_call_with_extracted_types($(Expr(:quote, :analyze)), ex0)
+    :(@analyze((_) -> true, $(esc(ex0))))
   end
 end
 
