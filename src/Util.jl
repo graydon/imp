@@ -31,9 +31,10 @@ end
 
 function get_code_info(method_instance::Core.MethodInstance)
   world = ccall(:jl_get_world_counter, UInt, ())
-  params = Core.Inference.InferenceParams(world)
+  params = Core.Inference.InferenceParams(world, inlining=false)
   optimize = true # TODO optimize=false prevents inlining, which is useful, but also prevents static calls from being detected
-  (_, code_info, return_typ) = Core.Inference.typeinf_code(method_instance, optimize, true, params)
+  cache = false # not sure if cached copies use the same params
+  (_, code_info, return_typ) = Core.Inference.typeinf_code(method_instance, optimize, cache, params)
   (code_info, return_typ)
 end
 
@@ -47,12 +48,19 @@ function is_untypeable(expr::Expr)
   expr.head in [:(=), :line, :boundscheck, :gotoifnot, :return, :meta, :inbounds, :throw] || (expr.head == :call && expr.args[1] == :throw)
 end
 
+function is_throw(expr)
+  expr == :throw ||
+  expr == :throw_boundserror || 
+  (expr isa GlobalRef && is_throw(expr.name))
+end
+
 "Is it pointless to analyze this expression?"
 function should_ignore(expr::Expr)
-  expr.head == :throw || 
-  (expr.head == :call && expr.args[1] == :throw) ||
-  (expr.head == :call && expr.args[1] isa GlobalRef && expr.args[1].name == :throw) ||
-  (expr.head == :invoke && expr.args[1].def.name == :throw_boundserror)
+  throws = [:throw, :throw_boundserror, GlobalRef]
+  is_throw(expr.head) || 
+  (expr.head == :call && is_throw(expr.args[1])) ||
+  (expr.head == :call && expr.args[1] isa GlobalRef && is_throw(expr.args[1].name)) ||
+  (expr.head == :invoke && expr.args[1] isa Core.MethodInstance && is_throw(expr.args[1].def.name))
 end
 
 struct MethodResult 
@@ -142,7 +150,9 @@ function get_child_calls(method_instance::Core.MethodInstance)
       if isa(expr, Core.MethodInstance)
         push!(calls, expr)
       elseif isa(expr, Expr)
-        foreach(walk_expr, expr.args)
+        if !should_ignore(expr)
+          foreach(walk_expr, expr.args)
+        end
       end
   end
   foreach(walk_expr, code_info.code)
