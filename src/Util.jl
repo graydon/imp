@@ -53,13 +53,13 @@ function is_untypeable(expr::Expr)
   expr.head in [:(=), :line, :boundscheck, :gotoifnot, :return, :meta, :inbounds, :throw] || (expr.head == :call && expr.args[1] == :throw)
 end
 
-struct Body 
+struct MethodResult 
   typ::Type
 end
 
 @enum WarningKind NotConcretelyTyped Boxed DynamicCall
 
-const Location = Union{Expr, TypedSlot, Body}
+const Location = Union{Expr, TypedSlot, MethodResult}
 
 struct Warning
   kind::WarningKind
@@ -81,8 +81,8 @@ function warn_type!(location::Location, typ::Type, warnings::Vector{Warning})
   end
 end
 
-function warn!(body::Body, warnings::Vector{Warning})
-  warn_type!(body, body.typ, warnings)
+function warn!(result::MethodResult, warnings::Vector{Warning})
+  warn_type!(result, result.typ, warnings)
 end
 
 function warn!(expr::Expr, warnings::Vector{Warning})
@@ -103,11 +103,11 @@ function warn!(slot::TypedSlot, warnings::Vector{Warning})
   warn_type!(slot, slot.typ, warnings)
 end
 
-function warnings(method_instance::Core.MethodInstance)
+function get_warnings(method_instance::Core.MethodInstance)
   code_info, return_typ = get_code_info(method_instance)
   warnings = Warning[]
   
-  warn!(Body(return_typ), warnings)
+  warn!(MethodResult(return_typ), warnings)
   
   slot_is_used = [false for _ in code_info.slotnames]
   function walk_expr(expr)
@@ -128,28 +128,6 @@ function warnings(method_instance::Core.MethodInstance)
   end
   
   Warnings(code_info, warnings)
-end
-
-function Base.show(io::IO, warning::Warning) 
-  print(io, "Warning(")
-  print(io, warning.kind)
-  print(io, ", ")
-  Base.show_unquoted(IOContext(io, :TYPEEMPHASIZE => true), warning.location)
-  print(io, ")")
-end
-
-function Base.show(io::IO, warnings::Warnings) 
-  slotnames = Base.sourceinfo_slotnames(warnings.code_info)
-  print(io, "Warnings(\n")
-  inner_io = IOContext(io, :SOURCEINFO => warnings.code_info, :SOURCE_SLOTNAMES => slotnames)
-  # for some reason this does not indent
-  # Base.show_list(inner_io, warnings.warnings, ",\n", 4)
-  for warning in warnings.warnings
-    print(io, "    ")
-    show(inner_io, warning)
-    println(io)
-  end
-  print(io, ")")
 end
 
 function get_child_calls(method_instance::Core.MethodInstance)
@@ -196,15 +174,25 @@ function pretty(method_instance::Core.MethodInstance)
   "$shortened in $(method.module) at $(method.file):$(method.line)"
 end
 
+function pretty(code_info::CodeInfo, warning::Warning)
+  slotnames = Base.sourceinfo_slotnames(code_info)
+  buffer = IOBuffer()
+  io = IOContext(buffer, :TYPEEMPHASIZE => true, :SOURCEINFO => code_info, :SOURCE_SLOTNAMES => slotnames)
+  Base.emphasize(io, string(warning.kind)); print(io, ": "); Base.show_unquoted(io, warning.location)
+  String(buffer)
+end
+
 function analyze(f, typs, filter::Function)
   for (call, child_calls) in call_graph(get_method_instance(f, typs))
     if filter(call)
+      println();
       print(pretty(call)); println();
       for child_call in child_calls
         print("  Calls: "); print(pretty(child_call)); println();
       end
-      for warning in warnings(call).warnings
-        print("  "); print(warning.kind); print(": "); show(warning.location); println();
+      warnings = get_warnings(call)
+      for warning in warnings.warnings
+        print("  "); print(pretty(warnings.code_info, warning)); println();
       end
     end
   end
