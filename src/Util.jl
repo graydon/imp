@@ -17,12 +17,6 @@ end
 
 export @showtime, @splice
 
-# TODO distinguish better between static and dynamic calls
-# invoke with non-leaf types may be dynamic
-# call with leaf types may be static (grab the method instance?)
-# TODO print warnings nicely
-# TODO stop warning about exceptions
-
 function get_method_instance(f, typs)
   world = ccall(:jl_get_world_counter, UInt, ())
   tt = typs isa Type ? Tuple{typeof(f), typs.parameters...} : Tuple{typeof(f), typs...}
@@ -51,6 +45,14 @@ end
 "Does this expression never have a real type?"
 function is_untypeable(expr::Expr)
   expr.head in [:(=), :line, :boundscheck, :gotoifnot, :return, :meta, :inbounds, :throw] || (expr.head == :call && expr.args[1] == :throw)
+end
+
+"Is it pointless to analyze this expression?"
+function should_ignore(expr::Expr)
+  expr.head == :throw || 
+  (expr.head == :call && expr.args[1] == :throw) ||
+  (expr.head == :call && expr.args[1] isa GlobalRef && expr.args[1].name == :throw) ||
+  (expr.head == :invoke && expr.args[1].def.name == :throw_boundserror)
 end
 
 struct MethodResult 
@@ -114,8 +116,10 @@ function get_warnings(method_instance::Core.MethodInstance)
       if isa(expr, Slot)
         slot_is_used[expr.id] = true
       elseif isa(expr, Expr)
-        warn!(expr, warnings)
-        foreach(walk_expr, expr.args)
+        if !should_ignore(expr)
+          warn!(expr, warnings)
+          foreach(walk_expr, expr.args)
+        end
       end
   end
   foreach(walk_expr, code_info.code)
@@ -211,5 +215,14 @@ end
     :(@analyze((_) -> true, $(esc(ex0))))
   end
 end
+
+# TODO distinguish better between static and dynamic calls
+# invoke with non-leaf types may be dynamic?
+# call with leaf types may be static? 
+
+# STATUS 
+# doesn't warn on dynamic calls
+# unsure whether foo(Type{T} where T) is dynamic or underspecialized
+# doesn't show calls to builtins
 
 end
