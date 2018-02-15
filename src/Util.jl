@@ -205,6 +205,14 @@ function pretty(code_info::CodeInfo, warning::Warning)
   String(buffer)
 end
 
+function pretty(code_info::CodeInfo)
+  slotnames = Base.sourceinfo_slotnames(code_info)
+  buffer = IOBuffer()
+  io = IOContext(buffer, :TYPEEMPHASIZE => true, :SOURCEINFO => code_info, :SOURCE_SLOTNAMES => slotnames)
+  Base.show_unquoted(io, code_info)
+  String(buffer)
+end
+
 function analyze(f, typs, filter::Function)
   for call_node in call_graph(get_method_instance(f, typs))
     if filter(call_node.call)
@@ -219,6 +227,9 @@ function analyze(f, typs, filter::Function)
       warnings = get_warnings(call_node.call)
       for warning in warnings.warnings
         print("  "); print(pretty(warnings.code_info, warning)); println();
+      end
+      if !isempty(warnings.warnings)
+        println(pretty(warnings.code_info))
       end
     end
   end
