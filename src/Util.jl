@@ -21,6 +21,7 @@ export @showtime, @splice
 # invoke with non-leaf types may be dynamic
 # call with leaf types may be static (grab the method instance?)
 # TODO print warnings nicely
+# TODO stop warning about exceptions
 
 function get_method_instance(f, typs)
   world = ccall(:jl_get_world_counter, UInt, ())
@@ -167,7 +168,7 @@ function get_child_calls(method_instance::Core.MethodInstance)
   calls
 end
 
-function call_graph(method_instance::Core.MethodInstance, filter::Function, max_calls=1000::Int64) ::Vector{Pair{Core.MethodInstance, Set{Core.MethodInstance}}}
+function call_graph(method_instance::Core.MethodInstance, max_calls=1000::Int64) ::Vector{Pair{Core.MethodInstance, Set{Core.MethodInstance}}}
   all = Dict{Core.MethodInstance, Set{Core.MethodInstance}}()
   ordered = Vector{Core.MethodInstance}()
   unexplored = Set{Core.MethodInstance}((method_instance,))
@@ -180,7 +181,7 @@ function call_graph(method_instance::Core.MethodInstance, filter::Function, max_
     all[method_instance] = child_calls
     push!(ordered, method_instance)
     for child_call in child_calls
-      if filter(child_call) && !haskey(all, child_call)
+      if !haskey(all, child_call)
         push!(unexplored, child_call)
       end
     end
@@ -196,13 +197,15 @@ function pretty(method_instance::Core.MethodInstance)
 end
 
 function analyze(f, typs, filter::Function)
-  for (call, child_calls) in call_graph(get_method_instance(f, typs), filter)
-    print(pretty(call)); println();
-    for child_call in child_calls
-      print("  Calls: "); print(pretty(child_call)); println();
-    end
-    for warning in warnings(call).warnings
-      print("  "); print(warning.kind); print(": "); show(warning.location); println();
+  for (call, child_calls) in call_graph(get_method_instance(f, typs))
+    if filter(call)
+      print(pretty(call)); println();
+      for child_call in child_calls
+        print("  Calls: "); print(pretty(child_call)); println();
+      end
+      for warning in warnings(call).warnings
+        print("  "); print(warning.kind); print(": "); show(warning.location); println();
+      end
     end
   end
 end
