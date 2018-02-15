@@ -124,7 +124,7 @@ end
 macro query(body)
   mod = current_module()
   init, parsed = parse_query(body, mod)
-  compiled = compile_relation(parsed)
+  fun = compile_relation(parsed).fun
   for call in parsed.body.domain
     if isa(call.name, Symbol)
       if !haskey(init, call.name)
@@ -132,7 +132,7 @@ macro query(body)
       end
     end
   end
-  :($compiled(Dict($(@splice (name, expr) in init :($(Expr(:quote, name)) => $(esc(expr)))))))
+  :($fun(Dict{Symbol, Relation}($(@splice (name, expr) in init :($(Expr(:quote, name)) => $(esc(expr)))))))
 end
 
 export @query
