@@ -523,11 +523,11 @@ pub fn run_code(db: &DB, code: &str, cursor: i64) {
         match block {
             &Err(ref error) => status.push(Err(format!("Parse error: {}", error))),
             &Ok(ref block) => {
-                print!("{:?}\n\n", block);
+                // print!("{:?}\n\n", block);
                 match plan(block) {
                     Err(error) => status.push(Err(format!("Compile error: {}", error))),
                     Ok(block) => {
-                        print!("{:?}\n\n", block);
+                        // print!("{:?}\n\n", block);
                         let prepared = prepare_block(&block, db);
                         match prepared {
                             Err(error) => status.push(Err(format!("Prepare error: {}", error))),
@@ -578,7 +578,7 @@ pub fn run_code(db: &DB, code: &str, cursor: i64) {
                     print!("\n");
                 }
 
-                print!("{:?}\n\n{:?}\n\n", code_ast.blocks[ix], block);
+                // print!("{:?}\n\n{:?}\n\n", code_ast.blocks[ix], block);
             }
         }
 
