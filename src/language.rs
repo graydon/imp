@@ -659,7 +659,7 @@ pub fn simplify_errors<Output>(
 }
 
 pub fn code_ast(text: &str, cursor: i64) -> CodeAst {
-    let blocks = text.trim().split("\n\n").filter(|s| *s != "").map(block_ast).collect::<Vec<_>>();
+    let blocks = text.trim().split("\n\n").map(block_ast).collect::<Vec<_>>();
     let mut focused = None;
     let mut remaining_cursor = cursor;
     for (i, block_src) in text.split("\n\n").enumerate() {
