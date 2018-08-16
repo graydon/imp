@@ -10,16 +10,87 @@ fn parse_chinook() -> Result<DB, Box<Error>> {
     let mut relations: HashMap<String, Relation> = HashMap::new();
     for (name, kinds) in vec![
         ("Album", vec![Kind::Integer, Kind::String, Kind::Integer]),
-        // "Customer",
-        // "Genre",
-        // "InvoiceLine",
-        // "MediaType",
-        // "PlaylistTrack",
+        (
+            "Customer",
+            vec![
+                Kind::Integer,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+            ]
+        ),
+        ("Genre", vec![Kind::Integer, Kind::String]),
+        (
+            "InvoiceLine",
+            vec![
+                Kind::Integer,
+                Kind::Integer,
+                Kind::Integer,
+                Kind::String,
+                Kind::Integer,
+            ]
+        ),
+        ("MediaType", vec![Kind::Integer, Kind::String]),
+        ("PlaylistTrack", vec![Kind::Integer, Kind::Integer]),
         ("Artist", vec![Kind::Integer, Kind::String]),
-        // "Employee",
-        // "Invoice",
-        // "Playlist",
-        // "Track",
+        (
+            "Employee",
+            vec![
+                Kind::Integer,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+            ]
+        ),
+        (
+            "Invoice",
+            vec![
+                Kind::Integer,
+                Kind::Integer,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+                Kind::String,
+            ]
+        ),
+        ("Playlist", vec![Kind::Integer, Kind::String]),
+        (
+            "Track",
+            vec![
+                Kind::Integer,
+                Kind::String,
+                Kind::Integer,
+                Kind::Integer,
+                Kind::Integer,
+                Kind::String,
+                Kind::Integer,
+                Kind::Integer,
+                Kind::String,
+            ]
+        ),
     ]
     {
         let mut reader = ::csv::ReaderBuilder::new().delimiter(b'\t').from_reader(
